@@ -1,0 +1,101 @@
+---
+title: Your Apple Health data, delivered where you choose
+description: Health Relay reads Apple Health on your iPhone and delivers each day, exactly and incrementally, to destinations you choose, in one open schema.
+template: splash
+hero:
+  tagline: Health Relay reads Apple Health on your iPhone and sends each day to destinations you choose, such as your own server or a self-hosted dashboard. Every changed day is re-sent whole, deletions included, in one open, documented schema.
+  image:
+    file: ../../assets/logo.svg
+  actions:
+    - text: Get started
+      link: /getting-started/install/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/patsissons/health-relay
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components'
+import { Image } from 'astro:assets'
+import status from '../../assets/screenshots/status.png'
+import destination from '../../assets/screenshots/destination.png'
+import log from '../../assets/screenshots/log.png'
+import types from '../../assets/screenshots/types.png'
+
+<div class="phones">
+  <figure>
+    <Image src={status} alt="The Status tab: last sync, a destination that is up to date, and the sync and re-send actions" />
+    <figcaption>Every destination's state at a glance</figcaption>
+  </figure>
+  <figure>
+    <Image src={destination} alt="A destination's settings: name, URL, bearer token, and a passing connection test" />
+    <figcaption>Any HTTP endpoint, tested in one tap</figcaption>
+  </figure>
+  <figure>
+    <Image src={log} alt="A destination's delivery log: each batch of days with the receiver's answer" />
+    <figcaption>Each delivery with the receiver's answer</figcaption>
+  </figure>
+</div>
+
+## Why Health Relay?
+
+Apple Health has no cloud API. The only way your data leaves the phone is
+through an app on the phone, and the existing options pre-aggregate it,
+change their payload between versions, or sync when they feel like it.
+Health Relay does one job and does it exactly.
+
+<CardGrid stagger>
+  <Card title="Exact, incremental sync" icon="approve-check">
+    Bookmarks on every Health type find exactly the days that changed. Each one is sent whole,
+    every type and source, so your receiver ends up with what the phone has, edits and deletions
+    included.
+  </Card>
+  <Card title="One open schema" icon="document">
+    A single documented JSON format in Apple Health's own terms, versioned by name. If you read
+    `export.xml` today, you already know it. [Read the schema](/reference/schema/).
+  </Card>
+  <Card title="Destinations you choose" icon="random">
+    Add any HTTP endpoint with an optional bearer token and headers: your server, a home lab
+    dashboard, a webhook. Every destination gets every day; one failing never holds up another.
+  </Card>
+  <Card title="Private by design" icon="seti:lock">
+    No account, no backend, no analytics. Data goes only to your destinations, tokens live in the
+    Keychain, and nothing is read that the schema doesn't name.
+  </Card>
+  <Card title="Reliable in the background" icon="rocket">
+    Wakes when Health records something, catches up every morning, keeps unsent batches on disk
+    and retries with backoff. It tells you plainly when iOS is in the way.
+  </Card>
+  <Card title="Per-source detail" icon="list-format">
+    Daily statistics per source (Watch, iPhone, scale, apps) plus the raw samples where they
+    matter: sleep stages, blood pressure, workouts with routes, ECG traces.
+  </Card>
+</CardGrid>
+
+## How it works
+
+<div class="flow">
+  <div><strong>1. Health changes</strong>A watch sync, a weigh-in, last night's sleep.</div>
+  <div><strong>2. Days marked</strong>The days that gained samples, plus today and yesterday.</div>
+  <div><strong>3. Read whole</strong>Every type and source for each of those days.</div>
+  <div><strong>4. Delivered</strong>JSON batches to each destination, kept until accepted.</div>
+</div>
+
+Write a receiver in an afternoon: accept a `POST`, check a token, store the
+days, answer `200`. [Writing a receiver](/reference/receivers/) has the
+rules, and the repository includes a reference receiver and canonical
+fixtures to test against.
+
+## See what arrives
+
+Every destination keeps a log of its deliveries with the receiver's answer,
+and **Data by type** shows which Health types had data in the last 30 days,
+so a permission switched off in Settings is easy to spot.
+
+<div class="phones">
+  <figure>
+    <Image src={types} alt="Data by type: each Health type with when it last had data" />
+    <figcaption>Which types are arriving, at a glance</figcaption>
+  </figure>
+</div>

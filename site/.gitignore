@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.astro/
+.wrangler/
+# generated from ../docs by scripts/sync-docs.mjs
+src/content/docs/reference/schema.md
+src/content/docs/reference/behaviour.md
+src/content/docs/reference/receivers.md

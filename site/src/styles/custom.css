@@ -1,0 +1,65 @@
+/* Health Relay's warm red, from the app icon. */
+:root {
+  --sl-color-accent-low: #3b0d16;
+  --sl-color-accent: #ff4561;
+  --sl-color-accent-high: #ffc7cf;
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #ffe1e5;
+  --sl-color-accent: #d61f3c;
+  --sl-color-accent-high: #6b0f1e;
+}
+
+.flow {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  margin-block: 1.5rem;
+}
+
+.flow > div {
+  /* Starlight's content styles add a top margin to every sibling after the first. */
+  margin: 0;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  font-size: var(--sl-text-sm);
+  background: var(--sl-color-bg-nav);
+}
+
+.flow > div strong {
+  display: block;
+  color: var(--sl-color-accent-high);
+}
+
+/* Phone screenshots: a row that wraps, each at phone width. */
+.phones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  justify-content: center;
+  margin-block: 2rem;
+}
+
+.phones figure {
+  margin: 0;
+  flex: 0 1 15rem;
+  text-align: center;
+}
+
+.phones img,
+.phone {
+  width: 100%;
+  max-width: 15rem;
+  height: auto;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 2rem;
+  box-shadow: 0 10px 40px -10px rgb(0 0 0 / 0.45);
+}
+
+.phones figcaption {
+  margin-top: 0.75rem;
+  font-size: var(--sl-text-sm);
+  color: var(--sl-color-gray-2);
+}

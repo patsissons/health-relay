@@ -5,6 +5,8 @@ exactly and incrementally, to destinations you choose: your own server, a
 self-hosted dashboard, any HTTP endpoint that speaks its open schema.
 Nothing leaves the phone except to those destinations.
 
+**Docs and screenshots: [health-relay.lgtm.page](https://health-relay.lgtm.page)**
+
 - **Exact incremental sync.** Days that changed are re-sent in full; a
   receiver ends up with what the phone has, deletions included.
 - **One open schema.** [`docs/schema.md`](docs/schema.md), in Apple
@@ -34,6 +36,8 @@ others. What they share is the contract at the top level.
   JSON (`node tools/canonical.mjs --check fixtures/*.json`).
 - [`tools/receiver.mjs`](tools/receiver.mjs): a throwaway local receiver
   (Node, no dependencies) that every platform is tested against.
+
+The site (`site/`) is built from these docs; see [`site/README.md`](site/README.md).
 
 A platform is done when, for the fixture's synthetic data, it emits
 `fixtures/push-two-days.json` byte for byte, and its pushes are accepted by
