@@ -83,7 +83,7 @@ latest `latestAt`. A mean row without a positive `count` carries no weight.
 
 `unit` is the HealthKit unit string the value is in. Health Relay sends
 `count`, `count/min`, `kcal`, `km`, `kg`, `%`, `ms`, `min`, `cm`, `km/hr`,
-`m/s`, `m`, `mL/(kg·min)`, `kcal/hr·kg`, `dBASPL`, `degC`, `g`, `mg`, `mcg`,
+`m/s`, `m`, `mL/min·kg`, `kcal/hr·kg`, `dBASPL`, `mmHg`, `degC`, `g`, `mg`, `mcg`,
 `mL`, `appleEffortScore`; a receiver should accept any unit it can convert
 (`lb`, `mi`, `kJ`, `degF`…). Percentages are fractions (`0.215` is 21.5 %)
 as HealthKit gives them.
@@ -223,6 +223,10 @@ body also exercises a receiver's rejections, so the fixture differs:
 - no `HKQuantityTypeIdentifierNotAThing` row and no `stats` row for a
   sound-level type (a receiver must ignore both; a sender never sends them);
 - sum rows carry `sum` only, no `count`;
+- the Withings weigh-in is `80` `kg`, not `176.37` `lb` (the app reads every
+  type in one unit; a receiver still converts whatever unit it gets);
+- `stats` are ordered by day, type and source, and `samples` by start, type,
+  source, end and value, which is the order Health Relay sends;
 - `device.app` is `Health Relay 0.1`;
 - the mindful session's value is `HKCategoryValueNotApplicable`, not `""`;
 - the ECG is decimated to 128 Hz on the phone (256 samples at `rate: 128`

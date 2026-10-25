@@ -94,10 +94,12 @@ and the receiver's message.
 All triggers run the same single sync, serialized: a trigger that arrives
 during a sync waits for it rather than starting a second.
 
-- **Health store change notifications**, where the platform has them,
-  batched: wait **5 minutes** after the first wake for more changes, then
-  sync. Hourly for most types; daily for sleep, stand hours and mindful
-  sessions.
+- **Health store change notifications**, where the platform has them:
+  hourly for most types, daily for sleep, stand hours and mindful
+  sessions. Many types wake the app at once, so wakes are coalesced: a wake
+  joins a sync already running, and a wake within **5 minutes** of the last
+  sync is dropped (its changes are past the anchors, so the next sync picks
+  them up). Background time is short, so a wake never waits.
 - **A daily catch-up** scheduled around 06:30 local.
 - **Coming to the foreground**, when the last successful sync is more
   than an hour old.
