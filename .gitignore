@@ -1,0 +1,12 @@
+.DS_Store
+node_modules/
+
+# ios: the project is generated from ios/project.yml (xcodegen)
+ios/HealthRelay.xcodeproj/
+ios/Local.xcconfig
+.build/
+.swiftpm/
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
