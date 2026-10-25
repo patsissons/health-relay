@@ -10,3 +10,7 @@ xcuserdata/
 *.xcuserstate
 DerivedData/
 build/
+
+# secrets
+.env
+.env.*
