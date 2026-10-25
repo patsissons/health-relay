@@ -3,7 +3,7 @@
 // says. It stores nothing unless --out is given. Any platform's app is tested
 // against it; it proves the app assumes nothing about one destination.
 //
-//   node tools/receiver.mjs [--port 8787] [--host 0.0.0.0] [--token <bearer>] [--out <dir>] [--fail <status>]
+//   node tools/receiver.mjs [--port 8787] [--host ::] [--token <bearer>] [--out <dir>] [--fail <status>]
 //
 // --token     require Authorization: Bearer <token> (401 otherwise)
 // --out       write each accepted body to <dir>/<n>.json, as received
@@ -18,7 +18,7 @@ const MAX_DAYS = 62
 const SECTIONS = ['stats', 'samples', 'workouts', 'summaries', 'ecg']
 
 function args(argv) {
-  const opts = { port: 8787, host: '0.0.0.0', token: process.env.RECEIVER_TOKEN || '', out: '', fail: 0 }
+  const opts = { port: 8787, host: '::', token: process.env.RECEIVER_TOKEN || '', out: '', fail: 0 }
   for (let i = 0; i < argv.length; i++) {
     const key = argv[i].replace(/^--/, '')
     if (!(key in opts)) throw new Error(`unknown option ${argv[i]}`)
@@ -90,10 +90,15 @@ function main() {
       const who = body.device ? `${body.device.name} (${body.device.app})` : 'unknown device'
       console.log(`${stamp} #${n} from ${who}: ${days.length ? `${days[0]}..${days[days.length - 1]} (${days.length} days)` : 'no days'}, ${Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(', ')}`)
       for (const [type, c] of Object.entries({ ...stats, ...samples })) console.log(`    ${type} ${c}`)
-      answer(res, 200, { ok: true, days: days.length, from: days[0] || null, to: days[days.length - 1] || null, ...counts })
+      const range = days.length ? ` (${days[0]}${days.length > 1 ? ` to ${days[days.length - 1]}` : ''})` : ''
+      const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`
+      const message = days.length
+        ? `Received ${plural(days.length, 'day')}${range}: ${plural(counts.stats, 'stat')}, ${plural(counts.samples, 'sample')}, ${plural(counts.workouts, 'workout')}`
+        : 'Connection OK'
+      answer(res, 200, { ok: true, message, days: days.length, from: days[0] || null, to: days[days.length - 1] || null, ...counts })
     })
   })
-  server.listen(opts.port, opts.host, () => console.log(`receiver listening on http://${opts.host}:${opts.port}${opts.token ? ' (bearer required)' : ''}`))
+  server.listen(opts.port, opts.host, () => console.log(`receiver listening on http://${opts.host.includes(':') ? `[${opts.host}]` : opts.host}:${opts.port}${opts.token ? ' (bearer required)' : ''}`))
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main()

@@ -45,6 +45,12 @@ every destination when:
   30 days, sent oldest first, one day per batch, so the first useful data
   lands quickly and a failure costs one day.
 
+**Never before the readable window.** The user may let the app read only
+some history (iOS 27 offers "past 30 days and future data"). No rule above
+marks a day earlier than 29 days before access was first granted: a listed
+day is owned, so listing a day the app cannot read would erase it at the
+destination.
+
 A day leaves a destination's dirty set only when that destination answered
 2xx to a batch listing it, and only if the day was not marked dirty again
 after that batch was read (a change that landed mid-flight is sent next

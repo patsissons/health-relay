@@ -27,6 +27,11 @@ public struct DirtySet: Codable, Sendable, Equatable {
     }
 
     public mutating func removeAll() { marks = [:] }
+
+    /// Drops the days that fail the test.
+    public mutating func keep(_ test: (Day) -> Bool) {
+        marks = marks.filter { Day($0.key).map(test) ?? false }
+    }
 }
 
 /// Which days are dirty, by rule (docs/design.md, Which days to send).

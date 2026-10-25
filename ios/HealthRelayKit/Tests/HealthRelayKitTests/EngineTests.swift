@@ -308,3 +308,29 @@ struct Rig {
 extension Engine {
     var anchorsForTesting: [String: Data] { state.anchors.committed }
 }
+
+@Suite struct ReadableWindowTests {
+    @Test func daysBeforeTheGrantWindowAreNeverListed() async {
+        let rig = Rig()
+        await rig.engine.noteAuthorized()
+        await rig.addAll()
+        await rig.engine.sync(.manual)
+        // A week later the sweep covers 35 days, but only 30 before the grant are readable.
+        rig.clock.advance(7 * 86400)
+        await rig.engine.sync(.manual)
+        let fake = rig.destinations[rig.ids[0]]!
+        let earliest = fake.sentDays.flatMap { $0 }.min()
+        #expect(earliest == "2026-09-26", "the grant was 2026-10-25, so 2026-09-26 is the first readable day")
+        // Re-sending further back is clipped the same way.
+        await rig.engine.resend(lastDays: 60)
+        #expect(await rig.lane().dirty.days.first?.description == "2026-09-26")
+    }
+
+    @Test func theWindowIsSetOnce() async {
+        let rig = Rig()
+        await rig.engine.noteAuthorized()
+        rig.clock.advance(10 * 86400)
+        await rig.engine.noteAuthorized()
+        #expect(await rig.engine.state.readableFrom?.description == "2026-09-26")
+    }
+}

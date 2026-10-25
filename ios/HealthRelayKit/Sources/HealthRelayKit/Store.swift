@@ -6,6 +6,8 @@ public struct EngineState: Codable, Sendable {
     public var lanes: [UUID: Lane] = [:]
     public var anchors = AnchorBook()
     public var lastSweep: Date?
+    /// The first day Health may let the app read (see Engine.noteAuthorized).
+    public var readableFrom: Day?
     public var lastSync: Date?
     /// The last sync that read Health and finished without a read error.
     public var lastSuccess: Date?

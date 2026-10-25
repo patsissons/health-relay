@@ -1,0 +1,3 @@
+// Shared by every configuration. Per-machine settings (the signing team)
+// come from ../Local.xcconfig when it exists; it is not committed.
+#include? "../Local.xcconfig"

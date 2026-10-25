@@ -131,7 +131,7 @@ public actor Engine {
         state.destinations.append(destination)
         env.tokens.setToken(token, for: destination.id)
         var lane = Lane()
-        lane.dirty.mark(DirtyRules.last(DirtyRules.firstRunDays, today: today()), at: env.now())
+        lane.dirty.mark(readable(DirtyRules.last(DirtyRules.firstRunDays, today: today())), at: env.now())
         state.lanes[destination.id] = lane
         if state.lastSweep == nil { state.lastSweep = env.now() }
         changed()
@@ -196,7 +196,7 @@ public actor Engine {
     public func resend(lastDays n: Int) {
         let days = DirtyRules.last(max(1, n), today: today())
         let at = env.now()
-        for id in state.lanes.keys { state.lanes[id]!.dirty.mark(days, at: at) }
+        for id in state.lanes.keys { state.lanes[id]!.dirty.mark(readable(days), at: at) }
         changed()
     }
 
@@ -233,6 +233,24 @@ public actor Engine {
     }
 
     private func today() -> Day { Day(env.now(), calendar: env.calendar()) }
+
+    /// Health access was granted. Since iOS 27 the user may share only the
+    /// 30 days before that and later; a listed day is owned by the push, so
+    /// a day the app may not be able to read must never be listed, or its
+    /// data would be removed at the destination. Kept from the first grant.
+    public func noteAuthorized() {
+        guard state.readableFrom == nil else { return }
+        state.readableFrom = today().adding(-(DirtyRules.firstRunDays - 1))
+        for id in state.lanes.keys { state.lanes[id]!.dirty.keep { readable($0) } }
+        changed()
+    }
+
+    private func readable(_ days: [Day]) -> [Day] {
+        guard let from = state.readableFrom else { return days }
+        return days.filter { $0 >= from }
+    }
+
+    private func readable(_ day: Day) -> Bool { readable([day]) == [day] }
 
     private func run(_ trigger: Trigger) async -> SyncReport {
         let calendar = env.calendar()
@@ -273,7 +291,8 @@ public actor Engine {
             marked.formUnion(DirtyRules.last(DirtyRules.sweepDays, today: today))
             state.lastSweep = started
         }
-        for id in state.lanes.keys { state.lanes[id]!.dirty.mark(marked, at: started) }
+        let send = readable(Array(marked))
+        for id in state.lanes.keys { state.lanes[id]!.dirty.mark(send, at: started) }
         changed()
 
         // 2. Each active destination in turn, sharing what was read.

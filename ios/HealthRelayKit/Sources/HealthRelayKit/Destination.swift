@@ -83,7 +83,7 @@ public struct Delivery: Codable, Sendable, Equatable {
         if let json = JSON.parse(body), case .object(let fields) = json {
             if let m = fields["message"]?.stringValue, !m.isEmpty { return m }
             if let e = fields["error"]?.stringValue, !e.isEmpty { return e }
-            let rest = fields.filter { $0.key != "ok" }.sorted { $0.key < $1.key }
+            let rest = fields.filter { $0.key != "ok" && $0.value != .null }.sorted { $0.key < $1.key }
             if !rest.isEmpty {
                 return rest.map { "\($0.key) \($0.value.canonical.replacingOccurrences(of: "\"", with: ""))" }.joined(separator: ", ")
             }
