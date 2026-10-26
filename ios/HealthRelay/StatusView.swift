@@ -6,6 +6,7 @@ import SwiftUI
 struct StatusView: View {
     @Environment(AppModel.self) private var model
     @State private var deviceName = ""
+    @FocusState private var editingName: Bool
 
     private var snapshot: Snapshot { model.snapshot }
 
@@ -102,8 +103,12 @@ struct StatusView: View {
 
                 Section {
                     TextField("iPhone", text: $deviceName)
-                        .onSubmit { Task { await model.setDeviceName(deviceName) } }
+                        .focused($editingName)
                         .submitLabel(.done)
+                        .accessibilityIdentifier("device-name")
+                        // Saved on leaving the field, however it is left.
+                        .onChange(of: editingName) { _, editing in if !editing { saveName() } }
+                        .onDisappear { saveName() }
                 } header: {
                     Text("This iPhone's name")
                 } footer: {
@@ -115,9 +120,19 @@ struct StatusView: View {
                 }
             }
             .navigationTitle("Health Relay")
+            .scrollDismissesKeyboard(.immediately)
             .refreshable { await model.syncNow() }
-            .onAppear { deviceName = snapshot.deviceName }
+            // The saved name, once loaded and after each save, unless being edited.
+            .onChange(of: snapshot.deviceName, initial: true) { _, name in
+                if !editingName { deviceName = name }
+            }
         }
+    }
+
+    private func saveName() {
+        guard deviceName != snapshot.deviceName else { return }
+        let name = deviceName
+        Task { await model.setDeviceName(name) }
     }
 }
 

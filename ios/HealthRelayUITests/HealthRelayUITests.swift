@@ -111,6 +111,29 @@ final class HealthRelayUITests: XCTestCase {
     /// iOS 27: "Select All N Topics", Continue at the end of the list, then a
     /// page asking how much history to share, then Allow. Earlier systems:
     /// "Turn On All", then Allow.
+    /// The phone's name is kept when the field is left any way, not only by Return.
+    func testPhoneNameIsSavedOnLeavingTheField() throws {
+        let field = app.textFields["device-name"]
+        XCTAssertTrue(field.waitForExistence(timeout: 30))
+        XCTAssertEqual(field.value as? String, "iPhone")
+        field.tap()
+        field.press(forDuration: 1.2)
+        if app.menuItems["Select All"].waitForExistence(timeout: 2) { app.menuItems["Select All"].tap() }
+        field.typeText("Pat's phone")
+        // Leave by scrolling the keyboard away, not Return.
+        app.collectionViews.firstMatch.swipeUp()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        tab("Destinations")
+        tab("Status")
+        XCTAssertEqual(field.value as? String, "Pat's phone")
+
+        app.terminate()
+        app.launchArguments = ["-hideSeed"]
+        app.launch()
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        XCTAssertEqual(field.value as? String, "Pat's phone")
+    }
+
     /// A setup link fills the editor; the same URL again updates, not adds.
     func testSetupLink() throws {
         let link = "healthrelay://destination?name=Cubby&url=http%3A%2F%2F127.0.0.1%3A8787%2F&token="
