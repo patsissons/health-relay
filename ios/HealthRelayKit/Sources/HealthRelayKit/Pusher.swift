@@ -78,6 +78,14 @@ struct Pusher {
     /// Builds the push for some days: its body, and how many records it holds.
     typealias Build = ([Day]) async throws -> (body: Data, records: Int, readAt: Date)
 
+    /// A batch about to go out, and one the destination accepted.
+    enum Step: Equatable {
+        case sending([Day])
+        case accepted([Day])
+    }
+
+    typealias Progress = @Sendable (Step) async -> Void
+
     enum Stop: Equatable {
         /// Everything dirty was delivered.
         case done
@@ -89,7 +97,8 @@ struct Pusher {
 
     /// Sends the queue, then batches of the remaining dirty days, until the
     /// lane is clean or a delivery fails.
-    func run(_ start: Lane, lane id: UUID, destination: DestinationType, build: Build) async -> (Lane, Stop) {
+    func run(_ start: Lane, lane id: UUID, destination: DestinationType, build: Build,
+             progress: Progress = { _ in }) async -> (Lane, Stop) {
         var lane = start
         var sent = 0
         var attempted = Set<Day>()
@@ -114,6 +123,7 @@ struct Pusher {
                 continue
             }
             if sent > 0 { await pause(Pusher.spacing) }
+            await progress(.sending(batch.days))
             let delivery = await destination.deliver(body)
             sent += 1
             let at = now()
@@ -124,6 +134,7 @@ struct Pusher {
                 files.removeBatch(lane: id, id: batch.id)
                 lane.dirty.clear(batch.days, readAt: batch.readAt)
                 lane.succeeded(now: at)
+                await progress(.accepted(batch.days))
             case .authFailed:
                 lane.attention = delivery.message
                 lane.lastError = delivery.message

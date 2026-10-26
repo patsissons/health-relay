@@ -309,6 +309,38 @@ extension Engine {
     var anchorsForTesting: [String: Data] { state.anchors.committed }
 }
 
+@Suite struct SyncProgressTests {
+    /// Every progress a sync reported to observers, in order.
+    final class Recorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var seen: [SyncProgress?] = []
+        var all: [SyncProgress?] { lock.withLock { seen } }
+        func add(_ p: SyncProgress?) { lock.withLock { seen.append(p) } }
+    }
+
+    @Test func checksThenReadsAndSendsEachBatchWithOverallRisingToDone() async {
+        let rig = Rig([FakeDestination(), FakeDestination()])
+        await rig.addAll()
+        let recorder = Recorder()
+        await rig.engine.observe { recorder.add($0.progress) }
+        await rig.engine.sync(.manual)
+
+        let steps = recorder.all.compactMap { $0 }
+        #expect(steps.first?.step == .checking)
+        #expect(steps.contains { if case .reading(let days) = $0.step { days.count == 1 } else { false } })
+        let sends = Set(steps.compactMap { if case .sending(_, let to) = $0.step { to } else { nil } })
+        #expect(sends == ["dest 0", "dest 1"])
+        // Overall never goes back, and ends complete; items stay in range.
+        #expect(zip(steps, steps.dropFirst()).allSatisfy { $0.overall <= $1.overall + 1e-9 })
+        #expect(steps.last?.overall == 1 && steps.last?.item == 1)
+        #expect(steps.allSatisfy { (0...1).contains($0.item) })
+        // Both destinations get 30 one-day batches: well under one update per percent.
+        #expect(steps.count < 400)
+        #expect(recorder.all.last! == nil)
+        #expect(await rig.engine.snapshot.progress == nil)
+    }
+}
+
 @Suite struct ReadableWindowTests {
     @Test func daysBeforeTheGrantWindowAreNeverListed() async {
         let rig = Rig()

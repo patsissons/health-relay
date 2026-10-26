@@ -33,7 +33,8 @@ struct StatusView: View {
                             Text("Never")
                         }
                     }
-                    if let message = snapshot.lastSyncMessage {
+                    // While a sync runs, its progress row says more.
+                    if let message = snapshot.lastSyncMessage, snapshot.progress == nil {
                         Text(message)
                             .foregroundStyle(.secondary)
                             .accessibilityIdentifier("sync-message")
@@ -51,6 +52,9 @@ struct StatusView: View {
                     }
                     .disabled(snapshot.syncing || snapshot.destinations.isEmpty)
                     .accessibilityIdentifier("sync-now")
+                    if let progress = snapshot.progress {
+                        SyncProgressRow(progress: progress)
+                    }
                 } footer: {
                     Text("iOS keeps Health data locked while your iPhone is locked, so changes overnight are sent after you first unlock it.")
                 }
@@ -254,5 +258,48 @@ struct TypesView: View {
         default:
             return bare.replacingOccurrences(of: "([a-z])([A-Z])", with: "$1 $2", options: .regularExpression)
         }
+    }
+}
+
+/// What a running sync is doing, how far through that it is, and how far
+/// through the whole sync.
+struct SyncProgressRow: View {
+    let progress: SyncProgress
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(line)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer()
+                Text(progress.item, format: .percent.precision(.fractionLength(0)))
+                    .foregroundStyle(.secondary)
+            }
+            ProgressView(value: progress.overall)
+            Text("\(progress.overall, format: .percent.precision(.fractionLength(0))) synced")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .font(.subheadline)
+        .monospacedDigit()
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("sync-progress")
+    }
+
+    private var line: String {
+        switch progress.step {
+        case .checking: "Checking Health for changes"
+        case .reading(let days): "Reading \(Self.span(days)) from Health"
+        case .sending(let days, let name): "Sending \(Self.span(days)) to \(name)"
+        }
+    }
+
+    /// "Oct 12", or "Oct 12 – Oct 18" for several days.
+    static func span(_ days: [Day]) -> String {
+        guard let first = days.min(), let last = days.max() else { return "" }
+        let style = Date.FormatStyle().month(.abbreviated).day()
+        let start = first.interval(in: .current).start.formatted(style)
+        return first == last ? start : "\(start) – \(last.interval(in: .current).start.formatted(style))"
     }
 }

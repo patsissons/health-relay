@@ -13,6 +13,12 @@ When the last sync ran and how it ended: **Up to date**, a count of
 destinations that will retry, or why it stopped (for example, the phone
 was locked). **Sync now** runs one immediately.
 
+While a sync runs, a line under **Sync now** shows what it is doing and
+how far through that step it is: checking Health for changes, reading a
+day from Health, or sending it to a destination. The bar below it is the
+whole sync. A first sync reads and sends 30 days to each destination, so
+expect it to take a minute or two.
+
 ## Destinations
 
 One row per destination:

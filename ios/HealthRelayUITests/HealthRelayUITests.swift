@@ -81,6 +81,13 @@ final class HealthRelayUITests: XCTestCase {
         // Sync: the first run sends 30 days, one per batch, a second apart.
         tab("Status")
         app.buttons["sync-now"].tap()
+        let progress = app.descendants(matching: .any)["sync-progress"]
+        XCTAssertTrue(progress.waitForExistence(timeout: 10))
+        // Into the deliveries, past the quick check for changes.
+        let delivering = NSPredicate(format: "label CONTAINS 'Sending' OR label CONTAINS 'Reading'")
+        expectation(for: delivering, evaluatedWith: progress)
+        waitForExpectations(timeout: 60)
+        snap("05-status-syncing")
         let message = app.staticTexts["sync-message"]
         let done = NSPredicate(format: "label == 'Up to date'")
         expectation(for: done, evaluatedWith: message)

@@ -23,9 +23,40 @@ public struct Snapshot: Sendable, Equatable {
     public var lastSuccess: Date?
     public var lastSyncMessage: String?
     public var syncing = false
+    /// What a running sync is doing; nil when none runs.
+    public var progress: SyncProgress?
     public var deviceName = "iPhone"
 
     public init() {}
+}
+
+/// A running sync's current step, how far through that step it is, and how
+/// far through the whole sync, each 0 to 1.
+public struct SyncProgress: Sendable, Equatable {
+    public enum Step: Sendable, Equatable {
+        /// Asking Health which days changed, one type at a time.
+        case checking
+        /// Reading days from Health to build a batch.
+        case reading([Day])
+        /// A batch going to a destination.
+        case sending([Day], to: String)
+    }
+
+    public var step: Step
+    public var item: Double
+    public var overall: Double
+
+    public init(step: Step, item: Double, overall: Double) {
+        self.step = step
+        self.item = item
+        self.overall = overall
+    }
+
+    /// Checking for changes takes this share of the whole; delivering the
+    /// days takes the rest, by days delivered.
+    static let checkingShare = 0.15
+    /// Of a batch, reading takes this share; the rest is its delivery.
+    static let readingShare = 0.9
 }
 
 public struct SyncReport: Sendable, Equatable {
@@ -84,6 +115,12 @@ public actor Engine {
     private(set) var state: EngineState
     private var running: Task<SyncReport, Never>?
     private var observers: [@Sendable (Snapshot) -> Void] = []
+    private var lastSnapshot: Snapshot?
+    private var progress: SyncProgress?
+    private var published: SyncProgress?
+    private var publishedAt = ContinuousClock.now
+    /// While delivering: days to deliver, days delivered, and the batch in hand.
+    private var plan = (total: 0, done: 0, batch: 0, destination: "")
 
     public init(_ env: Environment) {
         self.env = env
@@ -101,6 +138,7 @@ public actor Engine {
         s.lastSuccess = state.lastSuccess
         s.lastSyncMessage = state.lastSyncMessage
         s.syncing = running != nil
+        s.progress = progress
         s.deviceName = state.deviceName
         return s
     }
@@ -114,7 +152,47 @@ public actor Engine {
     private func changed() {
         env.files.save(state)
         let s = snapshot
+        lastSnapshot = s
+        published = progress
         for o in observers { o(s) }
+    }
+
+    /// Progress goes to observers without saving state: a new step or a
+    /// finished one at once, otherwise at most ten times a second.
+    private func show(_ step: SyncProgress.Step, item: Double, overall: Double) {
+        let p = SyncProgress(step: step, item: min(max(item, 0), 1), overall: min(max(overall, 0), 1))
+        progress = p
+        let now = ContinuousClock.now
+        if let last = published, last.step == p.step, p.item < 1, now - publishedAt < .milliseconds(100) { return }
+        published = p
+        publishedAt = now
+        var s = lastSnapshot ?? snapshot
+        s.progress = p
+        for o in observers { o(s) }
+    }
+
+    /// Delivery progress: the batch in hand counts for `item` of its days.
+    private func show(_ step: SyncProgress.Step, item: Double) {
+        let total = max(plan.total, 1)
+        let days = min(Double(plan.done) + item * Double(plan.batch), Double(total))
+        show(step, item: item, overall: SyncProgress.checkingShare + (1 - SyncProgress.checkingShare) * days / Double(total))
+    }
+
+    private func reading(_ days: [Day], _ fraction: Double) {
+        plan.batch = days.count
+        show(.reading(days), item: fraction * SyncProgress.readingShare)
+    }
+
+    private func delivering(_ step: Pusher.Step) {
+        switch step {
+        case .sending(let days):
+            plan.batch = days.count
+            show(.sending(days, to: plan.destination), item: SyncProgress.readingShare)
+        case .accepted(let days):
+            show(.sending(days, to: plan.destination), item: 1)
+            plan.done += days.count
+            plan.batch = 0
+        }
     }
 
     public func setDeviceName(_ name: String) {
@@ -228,6 +306,7 @@ public actor Engine {
         changed()
         let report = await task.value
         running = nil
+        progress = nil
         changed()
         return report
     }
@@ -271,7 +350,9 @@ public actor Engine {
         let windowStart = Day(started, calendar: calendar).adding(-(DirtyRules.changeWindowDays - 1)).start(in: calendar)
         let firstRunStart = Day(started, calendar: calendar).adding(-(DirtyRules.firstRunDays - 1)).start(in: calendar)
         do {
-            for type in Catalog.allTypes {
+            for (i, type) in Catalog.allTypes.enumerated() {
+                let done = Double(i) / Double(Catalog.allTypes.count)
+                show(.checking, item: done, overall: SyncProgress.checkingShare * done)
                 let anchor = state.anchors.anchor(for: type)
                 let changes = try await env.store.changes(type, anchor: anchor, since: anchor == nil ? firstRunStart : windowStart)
                 for interval in changes.added where interval.end >= windowStart {
@@ -296,13 +377,19 @@ public actor Engine {
         changed()
 
         // 2. Each active destination in turn, sharing what was read.
+        let sending = state.destinations.filter { d in
+            guard !d.paused, let lane = state.lanes[d.id], lane.attention == nil else { return false }
+            return lane.retryAfter.map { $0 <= env.now() } ?? true
+        }
+        plan = (sending.reduce(0) { $0 + (state.lanes[$1.id]?.dirty.days.count ?? 0) }, 0, 0, "")
         let reader = DayReader(store: env.store, calendar: calendar)
         var cache: [Day: Content] = [:]
         let deviceName = state.deviceName
+        let onRead: @Sendable ([Day], Double) async -> Void = { days, fraction in await self.reading(days, fraction) }
         let build: Pusher.Build = { [env] days in
             let missing = days.filter { cache[$0] == nil }
             if !missing.isEmpty {
-                for (d, c) in try await reader.read(missing) { cache[d] = c }
+                for (d, c) in try await reader.read(missing, progress: { await onRead(days, $0) }) { cache[d] = c }
             }
             let readAt = env.now()
             let content = Content.merging(days.map { cache[$0] ?? Content() })
@@ -318,8 +405,10 @@ public actor Engine {
                 continue
             }
             let destination = env.makeDestination(d, env.tokens.token(for: d.id))
+            plan.destination = d.name
             let stop: Pusher.Stop
-            (lane, stop) = await pusher.run(lane, lane: d.id, destination: destination, build: build)
+            (lane, stop) = await pusher.run(lane, lane: d.id, destination: destination, build: build,
+                                            progress: { await self.delivering($0) })
             // The destination may have been removed while this one sent.
             if state.lanes[d.id] != nil { state.lanes[d.id] = lane }
             changed()

@@ -14,11 +14,19 @@ public struct DayReader: Sendable {
         self.calendar = calendar
     }
 
+    /// Progress through a read, 0 to 1, reported after each query.
+    public typealias Progress = @Sendable (Double) async -> Void
+
+    /// Queries per run of days: a type each, then workouts, ECGs and summaries.
+    static let steps = Catalog.stats.count + Catalog.samples.count + 3
+
     /// Reads the days, one query per type for each run of consecutive days.
-    public func read(_ days: [Day]) async throws -> [Day: Content] {
+    public func read(_ days: [Day], progress: Progress = { _ in }) async throws -> [Day: Content] {
         var out: [Day: Content] = [:]
-        for run in DayReader.runs(Set(days).sorted()) {
-            for (day, content) in try await readRun(run) { out[day] = content }
+        let runs = DayReader.runs(Set(days).sorted())
+        for (i, run) in runs.enumerated() {
+            let step: Progress = { done in await progress((Double(i) + done) / Double(runs.count)) }
+            for (day, content) in try await readRun(run, progress: step) { out[day] = content }
         }
         return out
     }
@@ -36,11 +44,16 @@ public struct DayReader: Sendable {
         return out
     }
 
-    private func readRun(_ days: [Day]) async throws -> [Day: Content] {
+    private func readRun(_ days: [Day], progress: Progress) async throws -> [Day: Content] {
         let tz = calendar.timeZone
         let intervals = Dictionary(uniqueKeysWithValues: days.map { ($0, $0.interval(in: calendar)) })
         let span = DateInterval(start: intervals[days.first!]!.start, end: intervals[days.last!]!.end)
         var content = Dictionary(uniqueKeysWithValues: days.map { ($0, Content()) })
+        var done = 0
+        func step() async {
+            done += 1
+            await progress(Double(done) / Double(DayReader.steps))
+        }
         /// The listed days an interval overlaps (an instant counts for its day).
         func daysOf(_ start: Date, _ end: Date) -> [Day] {
             days.filter { d in
@@ -91,6 +104,7 @@ public struct DayReader: Sendable {
                     }
                 }
             }
+            await step()
         }
 
         for type in Catalog.samples {
@@ -112,21 +126,25 @@ public struct DayReader: Sendable {
             for row in rows {
                 for day in daysOf(row.start, row.end) { content[day]!.samples.append(row) }
             }
+            await step()
         }
 
         for w in try await store.workouts(in: span) {
             let row = WorkoutRow(record: w, startDate: Stamp.local(w.start, tz), endDate: Stamp.local(w.end, tz))
             for day in daysOf(w.start, w.end) { content[day]!.workouts.append(row) }
         }
+        await step()
 
         for e in try await store.electrocardiograms(in: span) {
             let row = ECGRow(e, timeZone: tz)
             for day in daysOf(e.start, e.start) { content[day]!.ecg.append(row) }
         }
+        await step()
 
         for s in try await store.activitySummaries(days: days, calendar: calendar) where content[s.day] != nil {
             content[s.day]!.summaries.append(SummaryRow(record: s))
         }
+        await step()
 
         for day in days { content[day]!.sort() }
         return content
