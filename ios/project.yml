@@ -41,6 +41,10 @@ targets:
         BGTaskSchedulerPermittedIdentifiers: [com.patsissons.healthrelay.refresh]
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        # Setup links (healthrelay://destination?url=...), usually scanned from a QR code.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.patsissons.healthrelay.setup
+            CFBundleURLSchemes: [healthrelay]
     entitlements:
       path: HealthRelay/HealthRelay.entitlements
       properties:

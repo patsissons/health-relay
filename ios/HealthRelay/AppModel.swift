@@ -17,6 +17,16 @@ final class AppModel {
     private(set) var recent: [(type: HealthType, newest: Date?)] = []
     /// The answer to the last Test, by destination.
     var tests: [UUID: Delivery] = [:]
+    /// A setup link waiting for the user to review and save.
+    var setup: PendingSetup?
+    var badLink = false
+
+    struct PendingSetup: Identifiable {
+        let id = UUID()
+        let link: SetupLink
+        /// The destination with the same URL, which the link updates.
+        let existing: Destination?
+    }
 
     init() {
         if ProcessInfo.processInfo.arguments.contains("-reset") { AppModel.resetState() }
@@ -136,6 +146,17 @@ final class AppModel {
 
     func token(for id: UUID) async -> String {
         await engine.token(for: id) ?? ""
+    }
+
+    /// A setup link opens the editor filled in, for an existing destination
+    /// with the same URL if there is one; nothing is saved until the user does.
+    func open(_ url: URL) async {
+        guard let link = SetupLink(url) else { badLink = true; return }
+        // From the engine, not `snapshot`: a link can be what launched the app.
+        let existing = await engine.snapshot.destinations.map(\.destination).first {
+            if case .http(let e) = $0.kind { e.url == link.endpoint.url } else { false }
+        }
+        setup = PendingSetup(link: link, existing: existing)
     }
 
     func setDeviceName(_ name: String) async {

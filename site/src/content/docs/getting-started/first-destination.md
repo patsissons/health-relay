@@ -11,7 +11,21 @@ server, a self-hosted dashboard, a home automation webhook. You can add as
 many as you like; each one gets every day, and they never hold each other
 up.
 
-## Add it
+## Scan a setup code
+
+If your receiver shows a **Health Relay QR code** when it gives you a
+token, point the iPhone's Camera at it and tap **Open in Health Relay**.
+The destination editor opens with the name, URL and token filled in.
+Check the host it names is where you want your Health data to go, then tap
+**Save**. Nothing is added until you do.
+
+Scanning a new code for a destination you already have (say, after
+replacing its token) updates that destination instead of adding another.
+
+Receivers: the link format is in
+[Writing a receiver](/reference/receivers/#setup-links-and-qr-codes).
+
+## Add it by hand
 
 1. Open the **Destinations** tab and tap **+**.
 2. Fill in:

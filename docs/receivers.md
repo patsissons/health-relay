@@ -23,6 +23,34 @@ destination at `http://<this machine's LAN IP>:8787`. It prints each push's
 days and per-type counts, and `--out` saves every body for inspection.
 `--fail 503` makes it refuse everything, to watch an app's retries.
 
+## Setup links and QR codes
+
+A receiver that issues tokens can save the user typing them: show a link,
+usually as a QR code, that fills in Health Relay's destination editor.
+
+```
+healthrelay://destination?name=<label>&url=<push URL>&token=<bearer>
+```
+
+- Percent-encode every value (`encodeURIComponent`); tokens often contain
+  `+`, `/` and `=`.
+- `url` is required and must be `http` or `https`. `name` and `token` are
+  optional, and `header=<Name>: <Value>` may repeat for extra headers.
+  Unknown parameters are ignored.
+- Scanning it with the iPhone Camera offers to open Health Relay, which
+  shows the editor filled in, with the destination's host called out. **The
+  user saves; a link never adds a destination on its own.**
+- If a destination with the same `url` already exists, the link updates it
+  (typically a new token) instead of adding another.
+
+```js
+const link = 'healthrelay://destination?' + new URLSearchParams({ name, url, token })
+  .toString().replace(/\+/g, '%20')
+```
+
+The link carries the token, so show it only to the signed-in user, once,
+like the token itself.
+
 ## Storing days correctly
 
 The rules that make a receiver agree with the phone:
@@ -51,7 +79,7 @@ cubby's health app (a personal dashboard) implements this schema at
 - **Auth.** The user mints a device token on the health app's Data tab
   ("Add a phone"); it is shown once and only its SHA-256 is stored. In
   Health Relay the user adds an HTTP endpoint destination with that URL
-  and token.
+  and token, or scans the setup link's QR code shown with it.
 - **Parsing.** The push runs through the same aggregator as an Apple
   Health `export.zip` upload, so a pushed day and an exported day combine
   identically. Each `stats` row is folded in as its mode says; `samples`

@@ -48,6 +48,8 @@ struct DestinationEditor: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let existing: Destination?
+    /// Settings from a setup link, laid over the existing ones for review.
+    var setup: SetupLink? = nil
 
     @State private var name = ""
     @State private var url = ""
@@ -69,6 +71,19 @@ struct DestinationEditor: View {
 
     var body: some View {
         Form {
+            if let setup {
+                Section {
+                    Label {
+                        Text("Check this is where you want your Health data to go: every day this phone records will be sent to **\(setup.endpoint.url.host() ?? "")**.")
+                    } icon: {
+                        Image(systemName: "qrcode")
+                    }
+                    .font(.subheadline)
+                } header: {
+                    Text(existing == nil ? "From a setup link" : "From a setup link: updates this destination")
+                }
+            }
+
             Section {
                 TextField("Name", text: $name)
                     .accessibilityIdentifier("destination-name")
@@ -155,7 +170,7 @@ struct DestinationEditor: View {
         .navigationTitle(existing == nil ? "New destination" : name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if existing == nil {
+            if existing == nil || setup != nil {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
@@ -183,11 +198,18 @@ struct DestinationEditor: View {
         .task {
             guard !loaded else { return }
             loaded = true
-            guard let existing, case .http(let e) = existing.kind else { return }
-            name = existing.name
-            url = e.url.absoluteString
-            headers = e.headers
-            token = await model.token(for: existing.id)
+            if let existing, case .http(let e) = existing.kind {
+                name = existing.name
+                url = e.url.absoluteString
+                headers = e.headers
+                token = await model.token(for: existing.id)
+            }
+            if let setup {
+                if let n = setup.name { name = n } else if name.isEmpty { name = setup.endpoint.url.host() ?? "" }
+                url = setup.endpoint.url.absoluteString
+                if !setup.endpoint.headers.isEmpty { headers = setup.endpoint.headers }
+                if let t = setup.token { token = t }
+            }
         }
     }
 

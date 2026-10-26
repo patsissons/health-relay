@@ -89,7 +89,9 @@ screenshots come from it.
 
 3. Status › **Allow Health access**, turn everything on.
 4. Destinations › **+**: the receiver's URL and token, Save, then **Test**
-   (expect a 2xx).
+   (expect a 2xx). Or scan the receiver's setup QR code with the Camera
+   (`healthrelay://destination?...`, see `docs/receivers.md`), review and
+   Save.
 5. Status › **Sync now**: the first run sends the last 30 days, one day
    per request.
 6. Leave it overnight and check for an unattended delivery the next morning

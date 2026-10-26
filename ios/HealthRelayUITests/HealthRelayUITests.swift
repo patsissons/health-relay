@@ -62,9 +62,15 @@ final class HealthRelayUITests: XCTestCase {
         if notNow.waitForExistence(timeout: 2) { notNow.tap() }
 
         XCTAssertTrue(app.buttons["save-destination"].waitForNonExistence(timeout: 5))
-        app.staticTexts["Home server"].firstMatch.tap()
+        let row = app.staticTexts["Home server"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
         let test = app.buttons["test-destination"]
-        XCTAssertTrue(test.waitForExistence(timeout: 5))
+        // The row can take a tap while the sheet is still settling; tap again.
+        for _ in 0..<3 where !test.exists {
+            row.tap()
+            _ = test.waitForExistence(timeout: 5)
+        }
+        XCTAssertTrue(test.exists)
         test.tap()
         let result = app.staticTexts["test-result"]
         XCTAssertTrue(result.waitForExistence(timeout: 20))
@@ -97,6 +103,43 @@ final class HealthRelayUITests: XCTestCase {
     /// iOS 27: "Select All N Topics", Continue at the end of the list, then a
     /// page asking how much history to share, then Allow. Earlier systems:
     /// "Turn On All", then Allow.
+    /// A setup link fills the editor; the same URL again updates, not adds.
+    func testSetupLink() throws {
+        let link = "healthrelay://destination?name=Cubby&url=http%3A%2F%2F127.0.0.1%3A8787%2F&token="
+        open(link + "first")
+        XCTAssertTrue(app.textFields["destination-url"].waitForExistence(timeout: 10))
+        XCTAssertTrue(text("From a setup link").exists)
+        XCTAssertEqual(app.textFields["destination-url"].value as? String, "http://127.0.0.1:8787/")
+        XCTAssertEqual(app.textFields["destination-name"].value as? String, "Cubby")
+        snap("setup-link")
+        app.buttons["save-destination"].tap()
+        if app.buttons["Not Now"].waitForExistence(timeout: 2) { app.buttons["Not Now"].tap() }
+
+        open(link + "second")
+        XCTAssertTrue(text("updates this destination").waitForExistence(timeout: 10))
+        app.buttons["save-destination"].tap()
+        XCTAssertTrue(app.buttons["save-destination"].waitForNonExistence(timeout: 5))
+
+        tab("Destinations")
+        XCTAssertEqual(app.staticTexts.matching(identifier: "Cubby").count, 1)
+
+        open("healthrelay://destination?name=x")
+        XCTAssertTrue(app.alerts["Not a setup link"].waitForExistence(timeout: 5))
+    }
+
+    /// A static text containing `part`, ignoring case (section headers may be upper-cased).
+    private func text(_ part: String) -> XCUIElement {
+        app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", part)).firstMatch
+    }
+
+    /// Opens a link the way the Camera does, through iOS's "Open in" prompt.
+    /// (`app.open` would relaunch the app with `-reset`.)
+    private func open(_ link: String) {
+        XCUIDevice.shared.system.open(URL(string: link)!)
+        let open = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Open"]
+        if open.waitForExistence(timeout: 5) { open.tap() }
+    }
+
     private func allowHealth() {
         let icon = app.images["healthauthorization_icon_large"]
         guard icon.waitForExistence(timeout: 10) else { return }
