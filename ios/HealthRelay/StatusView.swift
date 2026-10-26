@@ -55,8 +55,19 @@ struct StatusView: View {
                     if let progress = snapshot.progress {
                         SyncProgressRow(progress: progress)
                     }
+                }
+
+                Section {
+                    Toggle("Sync automatically", isOn: Binding(
+                        get: { model.autoSync },
+                        set: { on in Task { await model.setAutoSync(on) } }))
+                        .accessibilityIdentifier("auto-sync")
                 } footer: {
-                    Text("iOS keeps Health data locked while your iPhone is locked, so changes overnight are sent after you first unlock it.")
+                    if model.autoSync {
+                        Text("Syncs when Health records new data, each morning, and when you open the app, if Background App Refresh is on. iOS keeps Health data locked while your iPhone is locked, so changes overnight are sent after you first unlock it.")
+                    } else {
+                        Text("Days are sent only when you tap Sync now.")
+                    }
                 }
 
                 if snapshot.destinations.isEmpty {

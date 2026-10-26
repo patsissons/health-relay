@@ -80,6 +80,7 @@ final class HealthRelayUITests: XCTestCase {
 
         // Sync: the first run sends 30 days, one per batch, a second apart.
         tab("Status")
+        XCTAssertEqual(app.switches["auto-sync"].value as? String, "0", "automatic sync starts off")
         app.buttons["sync-now"].tap()
         let progress = app.descendants(matching: .any)["sync-progress"]
         XCTAssertTrue(progress.waitForExistence(timeout: 10))

@@ -94,8 +94,9 @@ screenshots come from it.
    Save.
 5. Status › **Sync now**: the first run sends the last 30 days, one day
    per request.
-6. Leave it overnight and check for an unattended delivery the next morning
-   in the destination's log.
+6. Turn on **Sync automatically** (off by default), leave it overnight and
+   check for an unattended delivery the next morning in the destination's
+   log.
 
 A local receiver on the Mac works from the phone too: `http://<Mac's LAN
 IP>:8787` (the app allows plain HTTP to local network addresses only).

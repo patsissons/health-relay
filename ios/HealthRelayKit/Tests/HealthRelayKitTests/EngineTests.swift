@@ -283,6 +283,7 @@ struct Rig {
     @Test func wakesJoinOrAreThrottled() async {
         let rig = Rig()
         await rig.addAll()
+        await rig.engine.setAutoSync(true)
         await rig.engine.sync(.manual)
         let fake = rig.destinations[rig.ids[0]]!
         let count = fake.bodies.count
@@ -292,6 +293,41 @@ struct Rig {
         rig.clock.advance(300)
         await rig.engine.wake()
         #expect(fake.bodies.count == count + 1)
+    }
+
+    @Test func automaticSyncIsOffUntilTurnedOn() async throws {
+        let rig = Rig()
+        await rig.addAll()
+        let fake = rig.destinations[rig.ids[0]]!
+        #expect(await rig.engine.snapshot.autoSync == false)
+
+        rig.clock.advance(2 * 3600)
+        await rig.engine.wake()
+        await rig.engine.syncIfStale()
+        let refresh = await rig.engine.sync(.refresh)
+        #expect(fake.bodies.isEmpty && refresh.message == "Automatic sync is off")
+        #expect(await rig.engine.snapshot.lastSync == nil)
+
+        await rig.engine.sync(.manual)
+        #expect(fake.sentDays.count == 30)
+
+        await rig.engine.setAutoSync(true)
+        let count = fake.bodies.count
+        rig.clock.advance(2 * 3600)
+        await rig.engine.syncIfStale()
+        #expect(fake.bodies.count > count)
+        #expect(await Engine(rig.engine.env).snapshot.autoSync, "kept across a relaunch")
+    }
+
+    @Test func stateSavedBeforeTheSettingStillLoads() throws {
+        let files = FileStore(root: FileManager.default.temporaryDirectory.appendingPathComponent("hr-tests-\(UUID().uuidString)"))
+        var old = EngineState()
+        old.destinations = [Destination(name: "Kept", kind: .http(HTTPEndpoint(url: URL(string: "https://example.test")!)))]
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(old)) as! [String: Any]
+        json["autoSync"] = nil
+        try JSONSerialization.data(withJSONObject: json).write(to: files.root.appendingPathComponent("state.json"))
+        let loaded = files.load()
+        #expect(loaded.destinations.map(\.name) == ["Kept"] && loaded.autoSync == nil)
     }
 
     @Test func aReadFailureStopsTheSyncAndKeepsTheDays() async {

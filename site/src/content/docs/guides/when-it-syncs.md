@@ -11,6 +11,11 @@ that is not paused.
 
 ## What starts a sync
 
+- **Sync now** on the Status tab, or pulling down to refresh. This always
+  works, and with the default settings it is the only way a sync starts.
+
+Turn on **Sync automatically** on the Status tab and these start one too:
+
 - **Health records something new.** Health Relay asks iOS to wake it when
   data arrives: hourly at most for most types, daily for sleep, stand hours
   and mindful minutes. Many types arrive together, so wakes within five
@@ -18,7 +23,9 @@ that is not paused.
 - **Every morning.** The app asks iOS for a catch-up around 06:30.
 - **Opening the app**, when the last successful sync is more than an hour
   old.
-- **Sync now** on the Status tab, or pulling down to refresh.
+
+Turning it off again stops all three; Health Relay no longer asks iOS to
+wake it.
 
 iOS decides exactly when background work runs. It gives more time to
 apps you use, and less in Low Power Mode.
@@ -26,8 +33,8 @@ apps you use, and less in Low Power Mode.
 :::caution[Turn on Background App Refresh]
 Since iOS 27, an app can read Health in the background only when
 **Background App Refresh** is on for it (Settings › General › Background
-App Refresh). With it off, Health Relay still works, but only syncs while
-you have it open.
+App Refresh). With it off, automatic sync only happens while you have the
+app open.
 :::
 
 ## Your iPhone must have been unlocked

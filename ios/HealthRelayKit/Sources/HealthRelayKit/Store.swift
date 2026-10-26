@@ -13,6 +13,10 @@ public struct EngineState: Codable, Sendable {
     public var lastSuccess: Date?
     public var lastSyncMessage: String?
     public var deviceName: String = "iPhone"
+    /// Whether syncs run without Sync now; nil (never set, or state saved
+    /// before the setting existed) means off. Optional so older state.json
+    /// still decodes.
+    public var autoSync: Bool?
 
     public init() {}
 }

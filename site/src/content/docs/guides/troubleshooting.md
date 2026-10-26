@@ -33,6 +33,8 @@ on the internet needs `https://`.
 
 ## Nothing arrived overnight
 
+- **Sync automatically** is off by default; without it, days are sent
+  only when you tap **Sync now**. Turn it on in the Status tab.
 - Health data is locked until the phone is unlocked, so overnight changes
   are sent after the first unlock in the morning.
 - Check that **Background App Refresh** is on for Health Relay, and that

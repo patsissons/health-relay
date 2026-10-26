@@ -17,6 +17,9 @@ final class AppModel {
     private(set) var recent: [(type: HealthType, newest: Date?)] = []
     /// The answer to the last Test, by destination.
     var tests: [UUID: Delivery] = [:]
+    /// Whether syncs run on Health's wakes, the morning refresh and coming
+    /// to the foreground, or only on Sync now (the default).
+    private(set) var autoSync: Bool
     /// A setup link waiting for the user to review and save.
     var setup: PendingSetup?
     var badLink = false
@@ -34,9 +37,13 @@ final class AppModel {
         let model = AppModel.deviceModel
         let os = UIDevice.current.systemVersion
         let app = "Health Relay \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0")"
+        let files = FileStore.standard()
+        // Read now, not from the engine later: a background wake needs its
+        // observers registered during launch.
+        autoSync = files.load().autoSync ?? false
         engine = Engine(.init(
             store: health,
-            files: .standard(),
+            files: files,
             tokens: KeychainTokenStore(),
             device: { Device(name: $0, model: model, os: os, app: app) }))
         let engine = engine
@@ -45,11 +52,8 @@ final class AppModel {
                 Task { @MainActor in self?.snapshot = snapshot }
             }
         }
-        if LiveHealthStore.isAvailable {
-            // Registered on every launch: background delivery wakes the app
-            // through these observers.
-            health.observe { await engine.wake() }
-        }
+        // Off also clears background delivery an earlier launch turned on.
+        if autoSync { observeHealth() } else if LiveHealthStore.isAvailable { health.stopObserving() }
         Task { await refreshAuthorization() }
     }
 
@@ -68,6 +72,14 @@ final class AppModel {
     }
 
     // MARK: Health
+
+    /// Registered on every launch while automatic sync is on: background
+    /// delivery wakes the app through these observers.
+    private func observeHealth() {
+        guard LiveHealthStore.isAvailable else { return }
+        let engine = engine
+        health.observe { await engine.wake() }
+    }
 
     func refreshAuthorization() async {
         guard LiveHealthStore.isAvailable else { return }
@@ -110,8 +122,20 @@ final class AppModel {
         scheduleRefresh()
     }
 
-    /// Asks for the daily catch-up around 06:30 tomorrow (or today, if earlier).
+    func setAutoSync(_ on: Bool) async {
+        autoSync = on
+        await engine.setAutoSync(on)
+        if on { observeHealth() } else { health.stopObserving() }
+        scheduleRefresh()
+    }
+
+    /// Asks for the daily catch-up around 06:30 tomorrow (or today, if
+    /// earlier); with automatic sync off, cancels it.
     func scheduleRefresh() {
+        guard autoSync else {
+            BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: AppModel.refreshTask)
+            return
+        }
         let calendar = Calendar.current
         let now = Date()
         var next = calendar.date(bySettingHour: 6, minute: 30, second: 0, of: now) ?? now

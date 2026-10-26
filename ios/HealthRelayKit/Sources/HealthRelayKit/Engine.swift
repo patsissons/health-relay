@@ -25,6 +25,8 @@ public struct Snapshot: Sendable, Equatable {
     public var syncing = false
     /// What a running sync is doing; nil when none runs.
     public var progress: SyncProgress?
+    /// Off: only Sync now (and Re-send) sync.
+    public var autoSync = false
     public var deviceName = "iPhone"
 
     public init() {}
@@ -140,6 +142,7 @@ public actor Engine {
         s.syncing = running != nil
         s.progress = progress
         s.deviceName = state.deviceName
+        s.autoSync = state.autoSync ?? false
         return s
     }
 
@@ -193,6 +196,13 @@ public actor Engine {
             plan.done += days.count
             plan.batch = 0
         }
+    }
+
+    /// Turns syncing on Health's wakes, the morning refresh and coming to
+    /// the foreground on or off. Off by default.
+    public func setAutoSync(_ on: Bool) {
+        state.autoSync = on
+        changed()
     }
 
     public func setDeviceName(_ name: String) {
@@ -298,8 +308,12 @@ public actor Engine {
     }
 
     /// The sync. A call while one runs waits for it and returns its report.
+    /// With automatic sync off, only a manual sync runs.
     @discardableResult
     public func sync(_ trigger: Trigger) async -> SyncReport {
+        guard trigger == .manual || state.autoSync == true else {
+            return SyncReport(trigger: trigger, startedAt: env.now(), message: "Automatic sync is off")
+        }
         if let running { return await running.value }
         let task = Task { await self.run(trigger) }
         running = task

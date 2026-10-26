@@ -9,6 +9,8 @@ import HealthKit
 /// on an incompatible unit).
 public final class LiveHealthStore: HealthStore, @unchecked Sendable {
     public let healthStore: HKHealthStore
+    private let observers = NSLock()
+    private var queries: [HKObserverQuery] = []
     /// Anchored queries are paged so a first read of a busy type stays small.
     static let pageSize = 2000
 
@@ -239,6 +241,7 @@ public final class LiveHealthStore: HealthStore, @unchecked Sendable {
     /// Registers an observer query and background delivery per type. Each
     /// wake runs `wake` and then tells HealthKit it was handled.
     public func observe(_ wake: @escaping @Sendable () async -> Void) {
+        stopObserving()
         for type in Catalog.allTypes {
             guard let st = Self.sampleType(type) else { continue }
             let query = HKObserverQuery(sampleType: st, predicate: nil) { _, completion, error in
@@ -250,9 +253,21 @@ public final class LiveHealthStore: HealthStore, @unchecked Sendable {
                 }
             }
             healthStore.execute(query)
+            observers.withLock { queries.append(query) }
             let frequency: HKUpdateFrequency = Catalog.frequency(of: type) == .daily ? .daily : .hourly
             healthStore.enableBackgroundDelivery(for: st, frequency: frequency) { _, _ in }
         }
+    }
+
+    /// Stops the observer queries and background delivery: Health no
+    /// longer wakes the app.
+    public func stopObserving() {
+        let stopping = observers.withLock {
+            defer { queries = [] }
+            return queries
+        }
+        for q in stopping { healthStore.stop(q) }
+        healthStore.disableAllBackgroundDelivery { _, _ in }
     }
 
     private struct Completion: @unchecked Sendable {

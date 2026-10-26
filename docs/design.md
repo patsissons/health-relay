@@ -100,6 +100,11 @@ and the receiver's message.
 All triggers run the same single sync, serialized: a trigger that arrives
 during a sync waits for it rather than starting a second.
 
+**Automatic sync is a setting, off by default.** Off, only Sync now (and
+Re-send) syncs; the platform is not asked for change notifications or a
+daily wake, and any it was asked for earlier are cancelled. On, these
+triggers run too:
+
 - **Health store change notifications**, where the platform has them:
   hourly for most types, daily for sleep, stand hours and mindful
   sessions. Many types wake the app at once, so wakes are coalesced: a wake
@@ -109,7 +114,8 @@ during a sync waits for it rather than starting a second.
 - **A daily catch-up** scheduled around 06:30 local.
 - **Coming to the foreground**, when the last successful sync is more
   than an hour old.
-- **Sync now** in the app.
+
+**Sync now** in the app always runs.
 
 **Known limit (iOS):** Health data cannot be read while the phone is
 locked, so changes recorded overnight are pushed after the first unlock.
