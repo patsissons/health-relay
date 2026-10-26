@@ -13,8 +13,9 @@ struct HealthRelayApp: App {
                     .tabItem { Label("Status", systemImage: "heart.text.square") }
                 DestinationsView()
                     .tabItem { Label("Destinations", systemImage: "paperplane") }
-                #if DEBUG
-                // -hideSeed: screenshots without the Debug-only tab.
+                #if DEBUG && targetEnvironment(simulator)
+                // Simulator only, so a real phone's Health never gets synthetic data.
+                // -hideSeed: screenshots without the tab.
                 if !ProcessInfo.processInfo.arguments.contains("-hideSeed") {
                     SeedView()
                         .tabItem { Label("Seed", systemImage: "leaf") }

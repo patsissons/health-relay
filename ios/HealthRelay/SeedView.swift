@@ -1,4 +1,4 @@
-#if DEBUG
+#if DEBUG && targetEnvironment(simulator)
 import CoreLocation
 import HealthKit
 import HealthRelayKit

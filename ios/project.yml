@@ -55,7 +55,7 @@ targets:
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        # Merged into Info.plist; Debug alone writes samples (the Seed tab).
+        # Merged into Info.plist; only Debug on the simulator writes samples (the Seed tab).
         GENERATE_INFOPLIST_FILE: YES
       configs:
         Debug:

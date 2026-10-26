@@ -9,7 +9,7 @@ and the body it sends in [`../docs/schema.md`](../docs/schema.md).
 ios/
 ├── project.yml            XcodeGen source of HealthRelay.xcodeproj (generated, not committed)
 ├── Config/Base.xcconfig   includes Local.xcconfig (your signing team; not committed)
-├── HealthRelay/           the app: Status, Destinations, Seed (Debug only)
+├── HealthRelay/           the app: Status, Destinations, Seed (Debug, simulator only)
 ├── HealthRelayUITests/    end to end on a simulator against tools/receiver.mjs
 └── HealthRelayKit/        the package: Sources/ and Tests/
 ```
@@ -74,8 +74,9 @@ screenshots come from it.
 1. Sign in to Xcode with the developer account (Xcode › Settings ›
    Accounts) and set `DEVELOPMENT_TEAM` in `Local.xcconfig`.
 2. Connect the iPhone and enable Developer Mode on it (Settings › Privacy
-   & Security). Install a **Release** build: a Debug build has the Seed
-   tab, which writes synthetic samples into the phone's real Health data.
+   & Security). Pick it as the run destination and Run. The first build
+   registers the phone with the team and creates the signing certificate
+   and profile. From the command line instead:
 
    ```sh
    UDID=$(xcrun devicectl list devices | awk '/physical/' | grep -oE '[0-9A-F]{8}-[0-9A-F]{16}' | head -1)
@@ -86,8 +87,6 @@ screenshots come from it.
      build/device/Build/Products/Release-iphoneos/HealthRelay.app
    ```
 
-   The first build registers the phone with the team and creates the
-   signing certificate and profile.
 3. Status › **Allow Health access**, turn everything on.
 4. Destinations › **+**: the receiver's URL and token, Save, then **Test**
    (expect a 2xx).
@@ -101,7 +100,8 @@ IP>:8787` (the app allows plain HTTP to local network addresses only).
 
 ## Simulator data
 
-The simulator has no Health data. Debug builds have a **Seed** tab that
-writes a week of synthetic samples (steps, energy, heart rate, HRV,
-weight, sleep, mindful minutes, blood pressure, sound levels, a symptom,
-runs with routes). Release builds leave it out and never ask to write.
+The simulator has no Health data. Debug builds on the simulator have a
+**Seed** tab that writes a week of synthetic samples (steps, energy, heart
+rate, HRV, weight, sleep, mindful minutes, blood pressure, sound levels, a
+symptom, runs with routes). Device and Release builds leave it out, so a
+real phone's Health never gets synthetic data.
