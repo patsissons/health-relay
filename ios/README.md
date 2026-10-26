@@ -73,8 +73,21 @@ screenshots come from it.
 
 1. Sign in to Xcode with the developer account (Xcode › Settings ›
    Accounts) and set `DEVELOPMENT_TEAM` in `Local.xcconfig`.
-2. Connect the iPhone, pick it as the run destination, Run. Enable
-   Developer Mode on the phone when asked.
+2. Connect the iPhone and enable Developer Mode on it (Settings › Privacy
+   & Security). Install a **Release** build: a Debug build has the Seed
+   tab, which writes synthetic samples into the phone's real Health data.
+
+   ```sh
+   UDID=$(xcrun devicectl list devices | awk '/physical/' | grep -oE '[0-9A-F]{8}-[0-9A-F]{16}' | head -1)
+   xcodebuild -project HealthRelay.xcodeproj -scheme HealthRelay \
+     -configuration Release -destination "id=$UDID" -derivedDataPath build/device \
+     -allowProvisioningUpdates -allowProvisioningDeviceRegistration build
+   xcrun devicectl device install app --device "$UDID" \
+     build/device/Build/Products/Release-iphoneos/HealthRelay.app
+   ```
+
+   The first build registers the phone with the team and creates the
+   signing certificate and profile.
 3. Status › **Allow Health access**, turn everything on.
 4. Destinations › **+**: the receiver's URL and token, Save, then **Test**
    (expect a 2xx).
