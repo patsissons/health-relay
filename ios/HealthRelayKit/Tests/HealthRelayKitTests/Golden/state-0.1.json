@@ -1,0 +1,119 @@
+{
+  "anchors" : {
+    "committed" : {
+      "HKQuantityTypeIdentifierStepCount" : "AQIDBA==",
+      "HKWorkoutTypeIdentifier" : "BQY="
+    }
+  },
+  "autoSync" : true,
+  "destinations" : [
+    {
+      "id" : "11111111-1111-4111-8111-111111111111",
+      "kind" : {
+        "http" : {
+          "_0" : {
+            "headers" : [
+              {
+                "name" : "X-Home",
+                "value" : "blue"
+              }
+            ],
+            "url" : "https:\/\/example.test\/push"
+          }
+        }
+      },
+      "name" : "Home server",
+      "paused" : false
+    },
+    {
+      "id" : "22222222-2222-4222-8222-222222222222",
+      "kind" : {
+        "http" : {
+          "_0" : {
+            "headers" : [
+
+            ],
+            "url" : "http:\/\/192.168.1.5:8787"
+          }
+        }
+      },
+      "name" : "Paused one",
+      "paused" : true
+    }
+  ],
+  "deviceName" : "Test iPhone",
+  "lanes" : [
+    "11111111-1111-4111-8111-111111111111",
+    {
+      "dirty" : {
+        "marks" : {
+
+        }
+      },
+      "failures" : 0,
+      "firstRun" : false,
+      "lastSuccess" : 813692800,
+      "log" : [
+        {
+          "at" : 813692800,
+          "days" : [
+            "2026-10-24",
+            "2026-10-25"
+          ],
+          "delivery" : {
+            "message" : "days 2",
+            "status" : 200,
+            "verdict" : "accepted"
+          },
+          "id" : "33333333-3333-4333-8333-333333333333"
+        }
+      ],
+      "queue" : [
+
+      ]
+    },
+    "22222222-2222-4222-8222-222222222222",
+    {
+      "attention" : "token_unknown",
+      "dirty" : {
+        "marks" : {
+          "2026-10-20" : 813692800,
+          "2026-10-21" : 813692800
+        }
+      },
+      "failures" : 2,
+      "firstRun" : true,
+      "lastError" : "token_unknown",
+      "log" : [
+        {
+          "at" : 813692800,
+          "days" : [
+            "2026-10-20"
+          ],
+          "delivery" : {
+            "message" : "The network connection was lost.",
+            "verdict" : "retry"
+          },
+          "id" : "55555555-5555-4555-8555-555555555555"
+        }
+      ],
+      "queue" : [
+        {
+          "bytes" : 1234,
+          "days" : [
+            "2026-10-20"
+          ],
+          "id" : "44444444-4444-4444-8444-444444444444",
+          "readAt" : 813692800,
+          "records" : 5
+        }
+      ],
+      "retryAfter" : 813692920
+    }
+  ],
+  "lastSuccess" : 813692740,
+  "lastSweep" : 813606400,
+  "lastSync" : 813692800,
+  "lastSyncMessage" : "1 destination will retry",
+  "readableFrom" : "2026-09-26"
+}

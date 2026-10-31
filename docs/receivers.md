@@ -26,7 +26,7 @@ days and per-type counts, and `--out` saves every body for inspection.
 ## Setup links and QR codes
 
 A receiver that issues tokens can save the user typing them: show a link,
-usually as a QR code, that fills in Health Relay's destination editor.
+usually as a QR code, that fills in Health Relay's pipeline editor.
 
 ```
 healthrelay://destination?name=<label>&url=<push URL>&token=<bearer>

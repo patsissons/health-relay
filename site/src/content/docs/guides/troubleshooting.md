@@ -5,15 +5,14 @@ sidebar:
   order: 4
 ---
 
-Start with the destination's delivery log: **Status**, then tap the
-destination. Each entry shows the HTTP status and the receiver's own
-message.
+Start with the delivery log: tap the pipeline's card, then **Deliveries**. Each
+entry shows the HTTP status and the receiver's own message.
 
 ## "Needs attention" with 401 or 403
 
 The receiver doesn't accept the token any more. Get a new one from the
-receiver, open the destination, paste it and tap **Test**. A passing test
-clears the state and the waiting days go with the next sync.
+receiver, open the pipeline, tap **Edit**, paste it, save and tap **Test**. A
+passing test clears the state and the waiting days go with the next run.
 
 ## Deliveries fail with 400
 
@@ -33,24 +32,24 @@ on the internet needs `https://`.
 
 ## Nothing arrived overnight
 
-- **Sync automatically** is off by default; without it, days are sent
-  only when you tap **Sync now**. Turn it on in the Status tab.
+- A pipeline is **Manual** by default, so it sends only when you tap **Run**.
+  Give it a schedule or **When Health changes**: open it and tap **Edit**.
 - Health data is locked until the phone is unlocked, so overnight changes
   are sent after the first unlock in the morning.
 - Check that **Background App Refresh** is on for Health Relay, and that
   you haven't swiped the app away in the app switcher.
 - Low Power Mode delays background work.
 
-Opening the app syncs straight away if the last successful sync is more
-than an hour old.
+Opening the app runs what is due straight away, and a **When Health changes**
+pipeline if its last successful run is more than an hour old.
 
 ## A type never arrives
 
-Open **Status › Data by type**. If the type is under **No data in 30
+Open **Settings › Data by type**. If the type is under **No data in 30
 days**, either nothing recorded it or its permission is off: Settings ›
 Health › Data Access & Devices › Health Relay, and turn it on.
 
 ## The receiver shows old values for a day
 
-Re-send the day: **Status › Re-send recent days**. Each day is sent whole,
+Re-send the day: open the pipeline and tap **Re-send recent days**. Each day is sent whole,
 so the receiver ends up with exactly what the phone has.

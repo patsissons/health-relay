@@ -17,14 +17,20 @@ public struct EngineState: Codable, Sendable {
     /// before the setting existed) means off. Optional so older state.json
     /// still decodes.
     public var autoSync: Bool?
+    /// Each pipeline's trigger; missing ones follow `autoSync`. Optional so
+    /// older state.json still decodes.
+    public var triggers: [UUID: PipelineTrigger]?
 
     public init() {}
 }
 
 /// The engine's files: `state.json` and one directory of queued batch
 /// bodies per destination. Writes are atomic.
-public final class FileStore: Sendable {
+public final class FileStore: @unchecked Sendable {
     public let root: URL
+    private let lock = NSLock()
+    /// `state.json` exists but could not be read, so saving would destroy it.
+    private var unreadable = false
 
     public init(root: URL) {
         self.root = root
@@ -49,15 +55,48 @@ public final class FileStore: Sendable {
         root.appendingPathComponent("queue", isDirectory: true).appendingPathComponent(lane.uuidString, isDirectory: true)
     }
 
+    /// The saved state. No file means a first launch. A file that cannot be
+    /// read yet (still locked before the first unlock) is left alone and
+    /// saves are refused until a later load succeeds. A file that cannot be
+    /// decoded is set aside, never overwritten.
     public func load() -> EngineState {
-        guard let data = try? Data(contentsOf: stateURL), let state = try? JSONDecoder().decode(EngineState.self, from: data) else {
+        let data: Data
+        do {
+            data = try Data(contentsOf: stateURL)
+        } catch {
+            let exists = FileManager.default.fileExists(atPath: stateURL.path)
+            lock.withLock { unreadable = exists }
             return EngineState()
         }
-        return state
+        lock.withLock { unreadable = false }
+        do {
+            return try JSONDecoder().decode(EngineState.self, from: data)
+        } catch {
+            let aside = root.appendingPathComponent("\(Self.setAsidePrefix)\(UUID().uuidString).json")
+            if (try? FileManager.default.moveItem(at: stateURL, to: aside)) == nil {
+                lock.withLock { unreadable = true }
+            }
+            return EngineState()
+        }
+    }
+
+    /// Whether `state.json` exists but could not be read at the last load.
+    public var isUnreadable: Bool { lock.withLock { unreadable } }
+
+    private static let setAsidePrefix = "state-undecodable-"
+
+    /// State files that could not be decoded and were kept.
+    public func setAsideStates() -> [URL] {
+        let files = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
+        return files.filter { $0.lastPathComponent.hasPrefix(Self.setAsidePrefix) }
+    }
+
+    public func removeSetAsideStates() {
+        for file in setAsideStates() { try? FileManager.default.removeItem(at: file) }
     }
 
     public func save(_ state: EngineState) {
-        guard let data = try? JSONEncoder().encode(state) else { return }
+        guard !isUnreadable, let data = try? JSONEncoder().encode(state) else { return }
         try? data.write(to: stateURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 

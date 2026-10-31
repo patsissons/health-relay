@@ -11,7 +11,8 @@ Nothing leaves the phone except to those destinations.
   receiver ends up with what the phone has, deletions included.
 - **One open schema.** [`docs/schema.md`](docs/schema.md), in Apple
   Health's own terms, versioned by name (`apple-push/1`).
-- **Destinations, not a service.** You add destinations; the app has no
+- **Pipelines, not a service.** You add pipelines, each running when you tap
+  Run or on a schedule, to destinations you choose; the app has no
   backend of its own.
 
 ## Platforms

@@ -17,9 +17,10 @@ final class AppModel {
     private(set) var recent: [(type: HealthType, newest: Date?)] = []
     /// The answer to the last Test, by destination.
     var tests: [UUID: Delivery] = [:]
-    /// Whether syncs run on Health's wakes, the morning refresh and coming
-    /// to the foreground, or only on Sync now (the default).
-    private(set) var autoSync: Bool
+    /// Whether Health's change notifications are registered this launch.
+    private var observing = false
+    /// Runs scheduled pipelines as they come due while the app is open.
+    private var watcher: Task<Void, Never>?
     /// A setup link waiting for the user to review and save.
     var setup: PendingSetup?
     var badLink = false
@@ -40,7 +41,7 @@ final class AppModel {
         let files = FileStore.standard()
         // Read now, not from the engine later: a background wake needs its
         // observers registered during launch.
-        autoSync = files.load().autoSync ?? false
+        let plan = files.load().backgroundPlan
         engine = Engine(.init(
             store: health,
             files: files,
@@ -52,8 +53,8 @@ final class AppModel {
                 Task { @MainActor in self?.snapshot = snapshot }
             }
         }
-        // Off also clears background delivery an earlier launch turned on.
-        if autoSync { observeHealth() } else if LiveHealthStore.isAvailable { health.stopObserving() }
+        // Nothing to observe also clears background delivery an earlier launch turned on.
+        if plan.observesHealth { observeHealth() } else if LiveHealthStore.isAvailable { health.stopObserving() }
         Task { await refreshAuthorization() }
     }
 
@@ -73,10 +74,11 @@ final class AppModel {
 
     // MARK: Health
 
-    /// Registered on every launch while automatic sync is on: background
-    /// delivery wakes the app through these observers.
+    /// Registered on every launch while any pipeline runs on its own:
+    /// background delivery wakes the app through these observers.
     private func observeHealth() {
         guard LiveHealthStore.isAvailable else { return }
+        observing = true
         let engine = engine
         health.observe { await engine.wake() }
     }
@@ -98,70 +100,105 @@ final class AppModel {
         recent = await engine.recentData().map { (type: $0.0, newest: $0.1) }
     }
 
-    // MARK: Sync
+    // MARK: Running
 
-    func syncNow() async {
-        await engine.sync(.manual)
-        scheduleRefresh()
+    /// Runs one pipeline: after whatever is running, whatever its backoff says.
+    func run(_ id: UUID) async {
+        await engine.run(id)
+        await applyBackgroundPlan()
     }
 
-    func resend(lastDays n: Int) async {
-        await engine.resend(lastDays: n)
-        await syncNow()
+    func resend(_ id: UUID, lastDays n: Int) async {
+        await engine.resend(id, lastDays: n)
+        await run(id)
     }
 
     func becameActive() async {
+        // Woken before the first unlock, the app could not read its settings.
+        await engine.reloadIfUnreadable()
         await refreshAuthorization()
+        watchSchedules()
         await engine.syncIfStale()
-        scheduleRefresh()
+        await applyBackgroundPlan()
     }
 
-    /// Background refresh, run by the system around 06:30.
+    func leftForeground() {
+        watcher?.cancel()
+        watcher = nil
+    }
+
+    /// A countdown reaching zero on screen runs its pipeline. A pipeline that
+    /// cannot finish stays due, so it is tried again only every 30 seconds.
+    private func watchSchedules() {
+        watcher?.cancel()
+        let engine = engine
+        watcher = Task {
+            while !Task.isCancelled {
+                await engine.runDue()
+                let remaining = await engine.nextRun?.timeIntervalSinceNow ?? 30
+                try? await Task.sleep(for: .seconds(remaining > 0 ? min(remaining, 30) : 30))
+            }
+        }
+    }
+
+    /// Background refresh, run by the system.
     func refresh() async {
         await engine.sync(.refresh)
-        scheduleRefresh()
+        await applyBackgroundPlan()
     }
 
-    func setAutoSync(_ on: Bool) async {
-        autoSync = on
-        await engine.setAutoSync(on)
-        if on { observeHealth() } else { health.stopObserving() }
-        scheduleRefresh()
-    }
-
-    /// Asks for the daily catch-up around 06:30 tomorrow (or today, if
-    /// earlier); with automatic sync off, cancels it.
-    func scheduleRefresh() {
-        guard autoSync else {
+    /// Asks iOS for what the triggers need: Health's change notifications,
+    /// and a refresh at the soonest due time or around 06:30.
+    func applyBackgroundPlan() async {
+        let plan = await engine.snapshot.backgroundPlan
+        if plan.observesHealth != observing {
+            if plan.observesHealth {
+                observeHealth()
+            } else {
+                observing = false
+                health.stopObserving()
+            }
+        }
+        var earliest = plan.nextRun
+        if plan.dailyCatchUp {
+            let calendar = Calendar.current
+            let now = Date()
+            var morning = calendar.date(bySettingHour: 6, minute: 30, second: 0, of: now) ?? now
+            if morning <= now { morning = calendar.date(byAdding: .day, value: 1, to: morning) ?? now.addingTimeInterval(86400) }
+            earliest = earliest.map { min($0, morning) } ?? morning
+        }
+        guard let earliest else {
             BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: AppModel.refreshTask)
             return
         }
-        let calendar = Calendar.current
-        let now = Date()
-        var next = calendar.date(bySettingHour: 6, minute: 30, second: 0, of: now) ?? now
-        if next <= now { next = calendar.date(byAdding: .day, value: 1, to: next) ?? now.addingTimeInterval(86400) }
         let request = BGAppRefreshTaskRequest(identifier: AppModel.refreshTask)
-        request.earliestBeginDate = next
+        request.earliestBeginDate = earliest
         try? BGTaskScheduler.shared.submit(request)
     }
 
-    // MARK: Destinations
+    // MARK: Pipelines
 
-    func add(name: String, endpoint: HTTPEndpoint, token: String) async {
-        await engine.add(Destination(name: name, kind: .http(endpoint)), token: token)
+    func add(name: String, endpoint: HTTPEndpoint, token: String, trigger: PipelineTrigger) async {
+        let added = await engine.add(Destination(name: name, kind: .http(endpoint)), token: token)
+        await engine.setTrigger(added.id, trigger)
+        await applyBackgroundPlan()
     }
 
-    func update(_ destination: Destination, token: String) async {
+    func update(_ destination: Destination, token: String, trigger: PipelineTrigger) async {
         await engine.update(destination, token: token)
+        await engine.setTrigger(destination.id, trigger)
+        await applyBackgroundPlan()
     }
 
     func remove(_ id: UUID) async {
         tests[id] = nil
         await engine.remove(id)
+        await applyBackgroundPlan()
     }
 
     func setPaused(_ id: UUID, _ paused: Bool) async {
         await engine.setPaused(id, paused)
+        await applyBackgroundPlan()
     }
 
     func test(_ id: UUID) async {
@@ -181,6 +218,10 @@ final class AppModel {
             if case .http(let e) = $0.kind { e.url == link.endpoint.url } else { false }
         }
         setup = PendingSetup(link: link, existing: existing)
+    }
+
+    func dismissSetAsideState() async {
+        await engine.dismissSetAsideState()
     }
 
     func setDeviceName(_ name: String) async {

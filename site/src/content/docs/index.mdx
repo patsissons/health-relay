@@ -22,18 +22,23 @@ import status from '../../assets/screenshots/status.png'
 import destination from '../../assets/screenshots/destination.png'
 import log from '../../assets/screenshots/log.png'
 import types from '../../assets/screenshots/types.png'
+import scheduled from '../../assets/screenshots/scheduled.png'
 
 <div class="phones">
   <figure>
-    <Image src={status} alt="The Status tab: last sync, a destination that is up to date, and the sync and re-send actions" />
-    <figcaption>Every destination's state at a glance</figcaption>
+    <Image src={status} alt="A pipeline card: its parts, up to date, and a Run button" />
+    <figcaption>Each pipeline is a card you can run</figcaption>
   </figure>
   <figure>
-    <Image src={destination} alt="A destination's settings: name, URL, bearer token, and a passing connection test" />
+    <Image src={scheduled} alt="A scheduled pipeline card counting down to its next run" />
+    <figcaption>Or give it a schedule and watch the countdown</figcaption>
+  </figure>
+  <figure>
+    <Image src={destination} alt="A pipeline's detail screen: its format, destination and trigger, and a passing connection test" />
     <figcaption>Any HTTP endpoint, tested in one tap</figcaption>
   </figure>
   <figure>
-    <Image src={log} alt="A destination's delivery log: each batch of days with the receiver's answer" />
+    <Image src={log} alt="A pipeline's delivery log: each batch of days with the receiver's answer" />
     <figcaption>Each delivery with the receiver's answer</figcaption>
   </figure>
 </div>
@@ -57,15 +62,15 @@ Health Relay does one job and does it exactly.
   </Card>
   <Card title="Destinations you choose" icon="random">
     Add any HTTP endpoint with an optional bearer token and headers: your server, a home lab
-    dashboard, a webhook. Every destination gets every day; one failing never holds up another.
+    dashboard, a webhook. Each pipeline tracks its own days; one failing never holds up another.
   </Card>
   <Card title="Private by design" icon="seti:lock">
     No account, no backend, no analytics. Data goes only to your destinations, tokens live in the
     Keychain, and nothing is read that the schema doesn't name.
   </Card>
-  <Card title="Syncs when you say" icon="rocket">
-    Tap Sync now, or turn on automatic sync: it wakes when Health records something and catches
-    up every morning. Unsent batches stay on disk and retry with backoff.
+  <Card title="Runs when you say" icon="rocket">
+    Each pipeline runs when you tap Run, on a schedule, or when Health records something. Unsent
+    batches stay on disk and retry with backoff.
   </Card>
   <Card title="Per-source detail" icon="list-format">
     Daily statistics per source (Watch, iPhone, scale, apps) plus the raw samples where they
@@ -89,7 +94,7 @@ fixtures to test against.
 
 ## See what arrives
 
-Every destination keeps a log of its deliveries with the receiver's answer,
+Every pipeline keeps a log of its deliveries with the receiver's answer,
 and **Data by type** shows which Health types had data in the last 30 days,
 so a permission switched off in Settings is easy to spot.
 

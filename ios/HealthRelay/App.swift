@@ -9,10 +9,10 @@ struct HealthRelayApp: App {
     var body: some Scene {
         WindowGroup {
             TabView {
-                StatusView()
-                    .tabItem { Label("Status", systemImage: "heart.text.square") }
-                DestinationsView()
-                    .tabItem { Label("Destinations", systemImage: "paperplane") }
+                PipelinesView()
+                    .tabItem { Label("Pipelines", systemImage: "arrow.triangle.branch") }
+                SettingsView()
+                    .tabItem { Label("Settings", systemImage: "gearshape") }
                 #if DEBUG && targetEnvironment(simulator)
                 // Simulator only, so a real phone's Health never gets synthetic data.
                 // -hideSeed: screenshots without the tab.
@@ -25,7 +25,7 @@ struct HealthRelayApp: App {
             .environment(model)
             .onOpenURL { url in Task { await model.open(url) } }
             .sheet(item: Binding(get: { model.setup }, set: { model.setup = $0 })) { setup in
-                NavigationStack { DestinationEditor(existing: setup.existing, setup: setup.link) }
+                NavigationStack { PipelineEditor(existing: setup.existing, setup: setup.link) }
                     .environment(model)
             }
             .alert("Not a setup link", isPresented: Binding(get: { model.badLink }, set: { model.badLink = $0 })) {
@@ -35,7 +35,7 @@ struct HealthRelayApp: App {
             }
         }
         .onChange(of: phase) { _, now in
-            if now == .active { Task { await model.becameActive() } }
+            if now == .active { Task { await model.becameActive() } } else { model.leftForeground() }
         }
         .backgroundTask(.appRefresh(AppModel.refreshTask)) {
             await model.refresh()

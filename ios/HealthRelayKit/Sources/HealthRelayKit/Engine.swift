@@ -19,6 +19,7 @@ public struct DestinationStatus: Sendable, Identifiable, Equatable {
 
 public struct Snapshot: Sendable, Equatable {
     public var destinations: [DestinationStatus] = []
+    public var pipelines: [Pipeline] = []
     public var lastSync: Date?
     public var lastSuccess: Date?
     public var lastSyncMessage: String?
@@ -28,6 +29,10 @@ public struct Snapshot: Sendable, Equatable {
     /// Off: only Sync now (and Re-send) sync.
     public var autoSync = false
     public var deviceName = "iPhone"
+    /// Saved settings could not be decoded, so the app started fresh; the
+    /// old file is kept until the user dismisses this.
+    public var stateSetAside = false
+    public var backgroundPlan = BackgroundPlan()
 
     public init() {}
 }
@@ -106,6 +111,12 @@ public actor Engine {
     public static let wakeThrottle: TimeInterval = 5 * 60
     /// A foreground sync runs when the last success is older than this.
     public static let foregroundAge: TimeInterval = 3600
+    /// A background sync starts no more work after this long. iOS gives
+    /// background work about 30 seconds, and this leaves room for what is
+    /// already under way to finish.
+    public static let backgroundBudget: TimeInterval = 25
+    static let outOfTime = "Stopped at the background time limit; the next sync carries on"
+    public static let lockedMessage = "Health data is unavailable while the phone is locked"
 
     public static let httpDestination: @Sendable (Destination, String?) -> DestinationType = { d, token in
         switch d.kind {
@@ -116,6 +127,13 @@ public actor Engine {
     let env: Environment
     private(set) var state: EngineState
     private var running: Task<SyncReport, Never>?
+    /// When the running sync stops starting work; nil: when it is done.
+    private var limit: Date?
+    /// The pipelines the running sync covers; nil: all of them.
+    private var chosen: Set<UUID>?
+    /// Pipelines waiting for the running sync to finish, oldest first.
+    private var queued: [UUID] = []
+    private var stateSetAside: Bool
     private var observers: [@Sendable (Snapshot) -> Void] = []
     private var lastSnapshot: Snapshot?
     private var progress: SyncProgress?
@@ -127,6 +145,7 @@ public actor Engine {
     public init(_ env: Environment) {
         self.env = env
         state = env.files.load()
+        stateSetAside = !env.files.setAsideStates().isEmpty
     }
 
     // MARK: Status
@@ -143,6 +162,12 @@ public actor Engine {
         s.progress = progress
         s.deviceName = state.deviceName
         s.autoSync = state.autoSync ?? false
+        s.stateSetAside = stateSetAside
+        s.backgroundPlan = state.backgroundPlan
+        s.pipelines = s.destinations.map {
+            Pipeline(destination: $0.destination, lane: $0.lane, hasToken: $0.hasToken,
+                     trigger: state.trigger(for: $0.id), activity: activity($0.id))
+        }
         return s
     }
 
@@ -150,6 +175,31 @@ public actor Engine {
     public func observe(_ body: @escaping @Sendable (Snapshot) -> Void) {
         observers.append(body)
         body(snapshot)
+    }
+
+    private func activity(_ id: UUID) -> Pipeline.Activity {
+        if running != nil, chosen?.contains(id) ?? true { return .running }
+        return queued.contains(id) ? .queued : .idle
+    }
+
+    /// Loads the saved state if it could not be read earlier (the app woke
+    /// before the first unlock). True when it did.
+    @discardableResult
+    public func reloadIfUnreadable() -> Bool {
+        guard running == nil, env.files.isUnreadable else { return false }
+        let loaded = env.files.load()
+        guard !env.files.isUnreadable else { return false }
+        state = loaded
+        stateSetAside = !env.files.setAsideStates().isEmpty
+        changed()
+        return true
+    }
+
+    /// The user has seen that saved settings were lost; the old file goes.
+    public func dismissSetAsideState() {
+        env.files.removeSetAsideStates()
+        stateSetAside = false
+        changed()
     }
 
     private func changed() {
@@ -171,6 +221,7 @@ public actor Engine {
         publishedAt = now
         var s = lastSnapshot ?? snapshot
         s.progress = p
+        lastSnapshot = s
         for o in observers { o(s) }
     }
 
@@ -202,6 +253,13 @@ public actor Engine {
     /// the foreground on or off. Off by default.
     public func setAutoSync(_ on: Bool) {
         state.autoSync = on
+        state.triggers = nil
+        changed()
+    }
+
+    public func setTrigger(_ id: UUID, _ trigger: PipelineTrigger) {
+        guard state.lanes[id] != nil else { return }
+        state.triggers = (state.triggers ?? [:]).merging([id: trigger]) { _, new in new }
         changed()
     }
 
@@ -248,6 +306,7 @@ public actor Engine {
     public func remove(_ id: UUID) {
         state.destinations.removeAll { $0.id == id }
         state.lanes[id] = nil
+        state.triggers?[id] = nil
         env.files.removeLane(id)
         env.tokens.setToken(nil, for: id)
         if state.destinations.isEmpty {
@@ -288,41 +347,146 @@ public actor Engine {
         changed()
     }
 
+    /// Marks the last `n` days dirty for one pipeline.
+    public func resend(_ id: UUID, lastDays n: Int) {
+        guard state.lanes[id] != nil else { return }
+        state.lanes[id]!.dirty.mark(readable(DirtyRules.last(max(1, n), today: today())), at: env.now())
+        changed()
+    }
+
     // MARK: Sync
 
-    /// For an observer wake: joins a running sync, drops a wake soon after
-    /// the last one, otherwise syncs.
+    /// For an observer wake: joins a running sync; otherwise runs what is
+    /// due, and what follows Health's changes unless the last sync was just now.
     public func wake() async {
         if let running {
             _ = await running.value
             return
         }
-        if let last = state.lastSync, env.now().timeIntervalSince(last) < Engine.wakeThrottle { return }
-        _ = await sync(.observer)
+        var ids = dueIDs()
+        let recent = state.lastSync.map { env.now().timeIntervalSince($0) < Engine.wakeThrottle } ?? false
+        if !recent { ids.formUnion(followingHealthIDs()) }
+        guard !ids.isEmpty else { return }
+        _ = await start(.observer, ids)
     }
 
-    /// For coming to the foreground: syncs when the last success is old.
+    /// For coming to the foreground: runs what is due, and what follows
+    /// Health's changes when the last success is old.
     public func syncIfStale() async {
-        if let last = state.lastSuccess, env.now().timeIntervalSince(last) < Engine.foregroundAge { return }
-        _ = await sync(.foreground)
+        var ids = dueIDs()
+        let fresh = state.lastSuccess.map { env.now().timeIntervalSince($0) < Engine.foregroundAge } ?? false
+        if !fresh { ids.formUnion(followingHealthIDs()) }
+        guard !ids.isEmpty else { return }
+        _ = await start(.foreground, ids)
     }
+
+    /// For while the app is open: runs scheduled pipelines as they come due.
+    public func runDue() async {
+        guard running == nil else { return }
+        let ids = dueIDs()
+        guard !ids.isEmpty else { return }
+        _ = await start(.foreground, ids)
+    }
+
+    /// The soonest a scheduled pipeline comes due, while the app is open.
+    public var nextRun: Date? { state.backgroundPlan.nextRun }
 
     /// The sync. A call while one runs waits for it and returns its report.
-    /// With automatic sync off, only a manual sync runs.
+    /// A manual sync covers every pipeline; any other only those whose
+    /// trigger wants it.
     @discardableResult
     public func sync(_ trigger: Trigger) async -> SyncReport {
-        guard trigger == .manual || state.autoSync == true else {
-            return SyncReport(trigger: trigger, startedAt: env.now(), message: "Automatic sync is off")
+        guard trigger != .manual else { return await start(trigger, nil) }
+        let ids = dueIDs().union(followingHealthIDs())
+        guard !ids.isEmpty else {
+            let any = state.destinations.contains { state.trigger(for: $0.id) != .manual }
+            return SyncReport(trigger: trigger, startedAt: env.now(), message: any ? "Nothing is due" : "Automatic sync is off")
         }
-        if let running { return await running.value }
-        let task = Task { await self.run(trigger) }
+        return await start(trigger, ids)
+    }
+
+    /// Runs one pipeline because the user asked: after whatever is running,
+    /// and whatever its backoff says. A pipeline that needs attention stays
+    /// stopped until it is fixed.
+    @discardableResult
+    public func run(_ id: UUID) async -> SyncReport {
+        queued.append(id)
+        changed()
+        while let running { _ = await running.value }
+        queued.removeAll { $0 == id }
+        return await start(.manual, [id], forced: true)
+    }
+
+    private func followingHealthIDs() -> Set<UUID> {
+        Set(state.destinations.map(\.id).filter { state.trigger(for: $0) == .whenHealthChanges })
+    }
+
+    /// Scheduled pipelines past their time, or with a failed delivery whose
+    /// backoff is over. Paused ones, ones that need attention and ones still
+    /// backing off cannot send, so they are not due.
+    private func dueIDs() -> Set<UUID> {
+        let now = env.now()
+        return Set(state.destinations.filter { d in
+            guard !d.paused, case .every(let schedule) = state.trigger(for: d.id) else { return false }
+            let lane = state.lanes[d.id]
+            guard lane?.attention == nil else { return false }
+            if let after = lane?.retryAfter {
+                if after > now { return false }
+                if lane?.dirty.isEmpty == false { return true }
+            }
+            return schedule.next(after: lane?.lastRun) <= now
+        }.map(\.id))
+    }
+
+    private func start(_ trigger: Trigger, _ ids: Set<UUID>?, forced: Bool = false) async -> SyncReport {
+        let background = trigger == .observer || trigger == .refresh
+        if let running {
+            // Someone is waiting on this sync now, so it finishes.
+            if !background { limit = nil }
+            return await running.value
+        }
+        limit = background ? env.now().addingTimeInterval(Engine.backgroundBudget) : nil
+        chosen = ids
+        let task = Task { () -> SyncReport in
+            let report = await self.run(trigger, only: ids, forced: forced)
+            self.finished()
+            return report
+        }
         running = task
         changed()
-        let report = await task.value
+        // iOS cancels a background task when its time is up.
+        return await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            if background { Task { await self.stopEarly() } }
+        }
+    }
+
+    private func finished() {
         running = nil
+        chosen = nil
+        limit = nil
         progress = nil
         changed()
-        return report
+    }
+
+    private func stopEarly() {
+        if limit != nil { limit = .distantPast }
+    }
+
+    private var limitReached: Bool {
+        limit.map { env.now() >= $0 } ?? false
+    }
+
+    private func lane(_ id: UUID) -> Lane? { state.lanes[id] }
+
+    /// Saved as it happens, so an app killed mid-sync does not forget what
+    /// was already delivered. Screens hear with the next progress.
+    private func updateLane(_ id: UUID, _ body: @Sendable (inout Lane) -> Void) {
+        guard state.lanes[id] != nil else { return }
+        body(&state.lanes[id]!)
+        env.files.save(state)
+        lastSnapshot = nil
     }
 
     private func today() -> Day { Day(env.now(), calendar: env.calendar()) }
@@ -345,7 +509,8 @@ public actor Engine {
 
     private func readable(_ day: Day) -> Bool { readable([day]) == [day] }
 
-    private func run(_ trigger: Trigger) async -> SyncReport {
+    private func run(_ trigger: Trigger, only ids: Set<UUID>?, forced: Bool) async -> SyncReport {
+        let inRun: @Sendable (UUID) -> Bool = { ids?.contains($0) ?? true }
         let calendar = env.calendar()
         let started = env.now()
         var report = SyncReport(trigger: trigger, startedAt: started, message: "")
@@ -361,10 +526,20 @@ public actor Engine {
         var marked = Set(DirtyRules.recent(today: Day(started, calendar: calendar)))
         var changedDays = Set<Day>()
         var pending: [String: Data] = [:]
-        let windowStart = Day(started, calendar: calendar).adding(-(DirtyRules.changeWindowDays - 1)).start(in: calendar)
+        // Far enough back for the pipeline that has gone longest without a
+        // delivery: the anchors move on without it, and its days must be marked.
+        let idleDays = state.lanes.values.compactMap(\.lastSuccess).min().map { Int(started.timeIntervalSince($0) / 86400) + 2 } ?? 0
+        let windowDays = max(DirtyRules.changeWindowDays, idleDays)
+        let windowStart = Day(started, calendar: calendar).adding(-(windowDays - 1)).start(in: calendar)
         let firstRunStart = Day(started, calendar: calendar).adding(-(DirtyRules.firstRunDays - 1)).start(in: calendar)
         do {
             for (i, type) in Catalog.allTypes.enumerated() {
+                if limitReached {
+                    report.message = Engine.outOfTime
+                    state.lastSyncMessage = report.message
+                    note(report.message, only: ids)
+                    return report
+                }
                 let done = Double(i) / Double(Catalog.allTypes.count)
                 show(.checking, item: done, overall: SyncProgress.checkingShare * done)
                 let anchor = state.anchors.anchor(for: type)
@@ -377,6 +552,7 @@ public actor Engine {
         } catch {
             report.message = Engine.describe(error)
             state.lastSyncMessage = report.message
+            note(report.message, only: ids)
             return report
         }
         let today = Day(started, calendar: calendar)
@@ -392,8 +568,8 @@ public actor Engine {
 
         // 2. Each active destination in turn, sharing what was read.
         let sending = state.destinations.filter { d in
-            guard !d.paused, let lane = state.lanes[d.id], lane.attention == nil else { return false }
-            return lane.retryAfter.map { $0 <= env.now() } ?? true
+            guard !d.paused, inRun(d.id), let lane = state.lanes[d.id], lane.attention == nil else { return false }
+            return forced || (lane.retryAfter.map { $0 <= env.now() } ?? true)
         }
         plan = (sending.reduce(0) { $0 + (state.lanes[$1.id]?.dirty.days.count ?? 0) }, 0, 0, "")
         let reader = DayReader(store: env.store, calendar: calendar)
@@ -412,36 +588,50 @@ public actor Engine {
         }
         let pusher = Pusher(files: env.files, now: env.now, pause: env.pause)
         var unreadable: String?
-        for d in state.destinations where !d.paused {
-            guard var lane = state.lanes[d.id], lane.attention == nil else { continue }
-            if let after = lane.retryAfter, after > env.now() {
+        var stopped = false
+        for d in state.destinations where !d.paused && inRun(d.id) {
+            guard let lane = state.lanes[d.id], lane.attention == nil else { continue }
+            if !forced, let after = lane.retryAfter, after > env.now() {
                 report.failed += 1
                 continue
             }
             let destination = env.makeDestination(d, env.tokens.token(for: d.id))
             plan.destination = d.name
-            let stop: Pusher.Stop
-            (lane, stop) = await pusher.run(lane, lane: d.id, destination: destination, build: build,
-                                            progress: { await self.delivering($0) })
-            // The destination may have been removed while this one sent.
-            if state.lanes[d.id] != nil { state.lanes[d.id] = lane }
-            changed()
+            let id = d.id
+            let access = Pusher.LaneAccess(read: { await self.lane(id) },
+                                           update: { body in await self.updateLane(id, body) },
+                                           shouldStop: { await self.limitReached })
+            let stop = await pusher.run(lane: id, access: access, destination: destination, build: build,
+                                        progress: { await self.delivering($0) })
+            // Removed while it sent: a batch written since must not linger.
+            if state.lanes[id] == nil { env.files.removeLane(id) }
             switch stop {
-            case .done: report.delivered += 1
-            case .failed: report.failed += 1
+            case .done, .failed:
+                if stop == .done { report.delivered += 1 } else { report.failed += 1 }
+                state.lanes[id]?.lastRun = env.now()
+                state.lanes[id]?.lastMessage = nil
             case .unreadable(let message):
-                unreadable = message
+                unreadable = Engine.describe(message)
+                state.lanes[id]?.lastMessage = unreadable
+            case .stopped:
+                stopped = true
+                state.lanes[id]?.lastMessage = Engine.outOfTime
             }
-            if unreadable != nil { break }
+            changed()
+            if unreadable != nil || stopped { break }
         }
 
-        // 3. Anchors advance when no active destination still has a changed day dirty.
-        let active = state.destinations.filter { !$0.paused && state.lanes[$0.id]?.attention == nil }
+        // 3. Anchors advance when no destination in this run still has a
+        // changed day dirty. The others keep their marks, so waiting on one
+        // that runs only when tapped would hold the anchors for nothing.
+        let active = state.destinations.filter { !$0.paused && inRun($0.id) && state.lanes[$0.id]?.attention == nil }
         let held = active.contains { d in changedDays.contains { state.lanes[d.id]?.dirty.contains($0) ?? false } }
         if !held && unreadable == nil { state.anchors.commit(pending) }
 
         if let unreadable {
             report.message = unreadable
+        } else if stopped {
+            report.message = Engine.outOfTime
         } else {
             state.lastSuccess = env.now()
             report.message = report.failed == 0 ? "Up to date" : "\(report.failed) destination\(report.failed == 1 ? "" : "s") will retry"
@@ -450,12 +640,15 @@ public actor Engine {
         return report
     }
 
-    static func describe(_ error: Error) -> String {
-        let text = error.localizedDescription
-        if text.localizedCaseInsensitiveContains("protected health data") {
-            return "Health data is unavailable while the phone is locked"
-        }
-        return text
+    /// Records why a run could not finish on the pipelines it covered.
+    private func note(_ message: String, only ids: Set<UUID>?) {
+        for id in state.lanes.keys where ids?.contains(id) ?? true { state.lanes[id]?.lastMessage = message }
+    }
+
+    static func describe(_ error: Error) -> String { describe(error.localizedDescription) }
+
+    static func describe(_ text: String) -> String {
+        text.localizedCaseInsensitiveContains("protected health data") ? lockedMessage : text
     }
 
     // MARK: Types

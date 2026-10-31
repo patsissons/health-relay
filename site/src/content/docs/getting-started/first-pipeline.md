@@ -1,45 +1,46 @@
 ---
-title: Your first destination
-description: Point Health Relay at an HTTP endpoint, test it and send your first days.
+title: Your first pipeline
+description: Point a pipeline at an HTTP endpoint, test it and send your first days.
 sidebar:
   order: 2
 ---
 
-A **destination** is somewhere Health Relay sends your days. Today that is
-any HTTP endpoint that accepts [the schema](/reference/schema/): your own
-server, a self-hosted dashboard, a home automation webhook. You can add as
-many as you like; each one gets every day, and they never hold each other
-up.
+A [**pipeline**](/guides/pipelines/) takes days from Health and delivers them
+to a destination, when you tap Run or on a schedule. Today a destination is any
+HTTP endpoint that accepts [the schema](/reference/schema/): your own server, a
+self-hosted dashboard, a home automation webhook. You can add as many as you
+like, and they never hold each other up.
 
 ## Scan a setup code
 
 If your receiver shows a **Health Relay QR code** when it gives you a
 token, point the iPhone's Camera at it and tap **Open in Health Relay**.
-The destination editor opens with the name, URL and token filled in.
+The pipeline editor opens with the name, URL and token filled in.
 Check the host it names is where you want your Health data to go, then tap
 **Save**. Nothing is added until you do.
 
-Scanning a new code for a destination you already have (say, after
-replacing its token) updates that destination instead of adding another.
+Scanning a new code for a URL you already have (say, after replacing its
+token) updates that pipeline instead of adding another.
 
 Receivers: the link format is in
 [Writing a receiver](/reference/receivers/#setup-links-and-qr-codes).
 
 ## Add it by hand
 
-1. Open the **Destinations** tab and tap **+**.
+1. On the **Pipelines** tab, tap **+**.
 2. Fill in:
-   - **Name**: anything; it's how the app labels the destination.
+   - **Name**: anything; it's how the app labels the pipeline.
    - **URL**: the endpoint, `https://` (or `http://` on your local
      network).
    - **Bearer token**: if the receiver gave you one. It is sent as
      `Authorization: Bearer <token>` and kept in the iPhone's Keychain.
    - **Extra headers**: only if your receiver needs them.
+   - **Trigger**: **Manual** runs when you tap Run. You can change it later.
 3. Tap **Save**.
 
 ## Test it
 
-Open the destination and tap **Test**. Health Relay sends an empty push
+Tap the pipeline's card, then **Test**. Health Relay sends an empty push
 (no days, no data) and shows the receiver's answer. Every receiver of the
 schema answers it with success, so a green `200` means the URL and token
 are right.
@@ -52,15 +53,15 @@ are right.
 | `404` | Check the URL's path. |
 | No answer | The phone can't reach the URL: a typo, a firewall, or a server that is down. |
 
-## The first sync
+## The first run
 
-Go back to **Status** and tap **Sync now**. A new destination first gets
-the **last 30 days**, oldest first, one day per request, so the first useful
-data lands within seconds and a failure costs one day, not thirty. After
-that, each sync sends only the days that changed.
+Go back and tap **Run**. A new pipeline first sends the **last 30 days**, oldest
+first, one day per request, so the first useful data lands within seconds and a
+failure costs one day, not thirty. After that, each run sends only the days that
+changed.
 
-The destination's row reads **Up to date** when everything has been
-delivered. Tap it to see each delivery, with the receiver's answer.
+The card reads **Up to date** when everything has been delivered. Open it for
+**Deliveries**, with the receiver's answer to each.
 
 Older history is not sent. If your receiver needs years of history, import
 a full Apple Health export into it once (Health app › your picture ›
@@ -75,6 +76,6 @@ Mac on the same network as your phone:
 node tools/receiver.mjs --token secret
 ```
 
-Add a destination with URL `http://<your Mac's IP>:8787` and token `secret`.
+Add a pipeline with URL `http://<your Mac's IP>:8787` and token `secret`.
 Each push shows up in the terminal with its days and per-type counts. Add
 `--out pushes` to save every body for a closer look.

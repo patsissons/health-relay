@@ -1,7 +1,7 @@
 import XCTest
 
-/// End to end on a simulator: allow Health, seed a week, add a destination,
-/// test it, sync, and read the log. Point it at a running receiver
+/// End to end on a simulator: allow Health, seed a week, add a pipeline,
+/// test it, run it, and read the log. Point it at a running receiver
 /// (`node tools/receiver.mjs --token test-token`) with
 /// TEST_RUNNER_RECEIVER_URL; TEST_RUNNER_SCREENSHOTS saves each step's
 /// screenshot as a PNG in that directory.
@@ -17,14 +17,14 @@ final class HealthRelayUITests: XCTestCase {
         app.launch()
     }
 
-    func testAddDestinationTestAndSync() throws {
+    func testAddPipelineTestAndRun() throws {
         let receiver = env["RECEIVER_URL"] ?? "http://127.0.0.1:8787/"
         let token = env["RECEIVER_TOKEN"] ?? "test-token"
 
-        // Health access from the Status tab.
+        // Health access from the Pipelines tab.
         let authorize = app.buttons["authorize"]
         if authorize.waitForExistence(timeout: 30) {
-            snap("01-status-new")
+            snap("01-pipelines-new")
             authorize.tap()
             allowHealth()
             sleep(2)
@@ -46,28 +46,33 @@ final class HealthRelayUITests: XCTestCase {
         app.launchArguments = ["-hideSeed"]
         app.launch()
 
-        // A destination.
-        tab("Destinations")
-        snap("02-destinations-empty")
-        app.buttons["add-destination"].tap()
-        type("destination-name", "Home server")
-        type("destination-url", receiver)
-        let tokenField = app.secureTextFields["destination-token"]
+        // A pipeline, manual unless told otherwise.
+        tab("Pipelines")
+        snap("02-pipelines-empty")
+        app.buttons["add-pipeline"].tap()
+        type("pipeline-name", "Home server")
+        type("pipeline-url", receiver)
+        let tokenField = app.secureTextFields["pipeline-token"]
         tokenField.tap()
         tokenField.typeText(token)
-        snap("03-destination-new")
-        app.buttons["save-destination"].tap()
+        snap("03-pipeline-new")
+        app.buttons["save-pipeline"].tap()
         // In case iOS still offers to save the token as a password.
         let notNow = app.buttons["Not Now"]
         if notNow.waitForExistence(timeout: 2) { notNow.tap() }
 
-        XCTAssertTrue(app.buttons["save-destination"].waitForNonExistence(timeout: 5))
-        let row = app.staticTexts["Home server"].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 5))
-        let test = app.buttons["test-destination"]
-        // The row can take a tap while the sheet is still settling; tap again.
+        XCTAssertTrue(app.buttons["save-pipeline"].waitForNonExistence(timeout: 5))
+        let card = app.staticTexts["Home server"].firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        let run = app.buttons["run-Home server"]
+        XCTAssertTrue(run.waitForExistence(timeout: 5), "a manual card has a Run button")
+        XCTAssertFalse(app.staticTexts["next-run"].exists, "and no countdown")
+
+        // Its detail screen, from the card.
+        let test = app.buttons["test-pipeline"]
+        // The card can take a tap while the sheet is still settling; tap again.
         for _ in 0..<3 where !test.exists {
-            row.tap()
+            card.tap()
             _ = test.waitForExistence(timeout: 5)
         }
         XCTAssertTrue(test.exists)
@@ -75,36 +80,95 @@ final class HealthRelayUITests: XCTestCase {
         let result = app.staticTexts["test-result"]
         XCTAssertTrue(result.waitForExistence(timeout: 20))
         XCTAssertTrue(result.label.hasPrefix("200"), result.label)
-        snap("04-destination-tested")
+        snap("04-pipeline-tested")
         app.navigationBars.buttons.element(boundBy: 0).tap()
 
-        // Sync: the first run sends 30 days, one per batch, a second apart.
-        tab("Status")
-        XCTAssertEqual(app.switches["auto-sync"].value as? String, "0", "automatic sync starts off")
-        app.buttons["sync-now"].tap()
+        // Run: the first run sends 30 days, one per batch, a second apart.
+        XCTAssertTrue(run.waitForExistence(timeout: 5))
+        run.tap()
         let progress = app.descendants(matching: .any)["sync-progress"]
         XCTAssertTrue(progress.waitForExistence(timeout: 10))
         // Into the deliveries, past the quick check for changes.
         let delivering = NSPredicate(format: "label CONTAINS 'Sending' OR label CONTAINS 'Reading'")
         expectation(for: delivering, evaluatedWith: progress)
         waitForExpectations(timeout: 60)
-        snap("05-status-syncing")
-        let message = app.staticTexts["sync-message"]
-        let done = NSPredicate(format: "label == 'Up to date'")
-        expectation(for: done, evaluatedWith: message)
+        snap("05-pipeline-running")
+        let done = NSPredicate(format: "exists == true")
+        expectation(for: done, evaluatedWith: run)
         waitForExpectations(timeout: 180)
-        snap("05-status-synced")
+        XCTAssertTrue(text("Up to date").waitForExistence(timeout: 5))
+        snap("05-pipeline-done")
 
-        app.staticTexts["Home server"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["Deliveries"].waitForExistence(timeout: 5))
+        card.tap()
+        let deliveries = app.buttons["deliveries"]
+        XCTAssertTrue(deliveries.waitForExistence(timeout: 5))
+        deliveries.tap()
+        XCTAssertTrue(text("Deliveries").waitForExistence(timeout: 5))
         snap("06-delivery-log")
         app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
 
-        app.swipeUp()
+        tab("Settings")
         app.buttons["Data by type"].tap()
         XCTAssertTrue(app.staticTexts["Data in the last 30 days"].waitForExistence(timeout: 10))
         sleep(2)
         snap("07-data-by-type")
+    }
+
+    /// A scheduled card counts down, second by second, instead of offering Run.
+    func testScheduledPipelineCountsDown() throws {
+        let add = app.buttons["add-pipeline"]
+        XCTAssertTrue(add.waitForExistence(timeout: 30))
+        add.tap()
+        type("pipeline-name", "Hourly")
+        type("pipeline-url", "http://127.0.0.1:8787/")
+        app.swipeUp()
+        app.buttons["Schedule"].tap()
+        snap("pipeline-schedule")
+        app.buttons["save-pipeline"].tap()
+        if app.buttons["Not Now"].waitForExistence(timeout: 2) { app.buttons["Not Now"].tap() }
+
+        let countdown = app.staticTexts["next-run"]
+        XCTAssertTrue(countdown.waitForExistence(timeout: 10))
+        XCTAssertTrue(countdown.label.hasPrefix("Next run in 59m"), countdown.label)
+        XCTAssertFalse(app.buttons["run-Hourly"].exists)
+        snap("08-pipeline-scheduled")
+        let first = countdown.label
+        let ticked = NSPredicate(format: "label != %@", first)
+        expectation(for: ticked, evaluatedWith: countdown)
+        waitForExpectations(timeout: 5)
+    }
+
+    /// A trigger can change from the editor, and the card follows it.
+    func testTriggerCanBeChanged() throws {
+        let add = app.buttons["add-pipeline"]
+        XCTAssertTrue(add.waitForExistence(timeout: 30))
+        add.tap()
+        type("pipeline-name", "Changing")
+        type("pipeline-url", "http://127.0.0.1:8787/")
+        app.buttons["save-pipeline"].tap()
+        if app.buttons["Not Now"].waitForExistence(timeout: 2) { app.buttons["Not Now"].tap() }
+        XCTAssertTrue(app.buttons["run-Changing"].waitForExistence(timeout: 10))
+
+        let card = app.staticTexts["Changing"].firstMatch
+        let edit = app.buttons["edit-pipeline"]
+        for _ in 0..<3 where !edit.exists {
+            card.tap()
+            _ = edit.waitForExistence(timeout: 5)
+        }
+        edit.tap()
+        XCTAssertTrue(app.buttons["save-pipeline"].waitForExistence(timeout: 5))
+        app.swipeUp()
+        app.buttons["Health changes"].tap()
+        app.buttons["save-pipeline"].tap()
+        XCTAssertTrue(app.buttons["save-pipeline"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(text("When Health changes").waitForExistence(timeout: 5))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        let line = app.staticTexts["next-run"]
+        XCTAssertTrue(line.waitForExistence(timeout: 5))
+        XCTAssertEqual(line.label, "Runs when Health changes")
+        XCTAssertFalse(app.buttons["run-Changing"].exists)
     }
 
     /// Accepts the Health permission sheet, which runs in another process.
@@ -113,6 +177,7 @@ final class HealthRelayUITests: XCTestCase {
     /// "Turn On All", then Allow.
     /// The phone's name is kept when the field is left any way, not only by Return.
     func testPhoneNameIsSavedOnLeavingTheField() throws {
+        tab("Settings")
         let field = app.textFields["device-name"]
         XCTAssertTrue(field.waitForExistence(timeout: 30))
         XCTAssertEqual(field.value as? String, "iPhone")
@@ -123,13 +188,14 @@ final class HealthRelayUITests: XCTestCase {
         // Leave by scrolling the keyboard away, not Return.
         app.collectionViews.firstMatch.swipeUp()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
-        tab("Destinations")
-        tab("Status")
+        tab("Pipelines")
+        tab("Settings")
         XCTAssertEqual(field.value as? String, "Pat's phone")
 
         app.terminate()
         app.launchArguments = ["-hideSeed"]
         app.launch()
+        tab("Settings")
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         XCTAssertEqual(field.value as? String, "Pat's phone")
     }
@@ -138,20 +204,20 @@ final class HealthRelayUITests: XCTestCase {
     func testSetupLink() throws {
         let link = "healthrelay://destination?name=Cubby&url=http%3A%2F%2F127.0.0.1%3A8787%2F&token="
         open(link + "first")
-        XCTAssertTrue(app.textFields["destination-url"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.textFields["pipeline-url"].waitForExistence(timeout: 10))
         XCTAssertTrue(text("From a setup link").exists)
-        XCTAssertEqual(app.textFields["destination-url"].value as? String, "http://127.0.0.1:8787/")
-        XCTAssertEqual(app.textFields["destination-name"].value as? String, "Cubby")
+        XCTAssertEqual(app.textFields["pipeline-url"].value as? String, "http://127.0.0.1:8787/")
+        XCTAssertEqual(app.textFields["pipeline-name"].value as? String, "Cubby")
         snap("setup-link")
-        app.buttons["save-destination"].tap()
+        app.buttons["save-pipeline"].tap()
         if app.buttons["Not Now"].waitForExistence(timeout: 2) { app.buttons["Not Now"].tap() }
 
         open(link + "second")
-        XCTAssertTrue(text("updates this destination").waitForExistence(timeout: 10))
-        app.buttons["save-destination"].tap()
-        XCTAssertTrue(app.buttons["save-destination"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(text("updates this pipeline").waitForExistence(timeout: 10))
+        app.buttons["save-pipeline"].tap()
+        XCTAssertTrue(app.buttons["save-pipeline"].waitForNonExistence(timeout: 5))
 
-        tab("Destinations")
+        tab("Pipelines")
         XCTAssertEqual(app.staticTexts.matching(identifier: "Cubby").count, 1)
 
         open("healthrelay://destination?name=x")

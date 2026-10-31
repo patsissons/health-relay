@@ -15,6 +15,10 @@ public struct Lane: Codable, Sendable, Equatable {
     public var lastError: String?
     public var lastSuccess: Date?
     public var log: [LogEntry] = []
+    /// When its last run finished, for working out when it is next due.
+    public var lastRun: Date?
+    /// Why its last run could not finish, when that was not the destination's doing.
+    public var lastMessage: String?
 
     public init() {}
 
@@ -86,6 +90,17 @@ struct Pusher {
 
     typealias Progress = @Sendable (Step) async -> Void
 
+    /// The engine's live lane. Sending suspends for a long time, and a lane
+    /// can change meanwhile (a re-send, an edit, a Test, a removal), so the
+    /// pusher never keeps a copy: it reads, and applies each change as it
+    /// happens. Nil: the destination was removed.
+    struct LaneAccess: Sendable {
+        let read: @Sendable () async -> Lane?
+        let update: @Sendable (@escaping @Sendable (inout Lane) -> Void) async -> Void
+        /// Whether to stop before starting more work (Engine's time limit).
+        let shouldStop: @Sendable () async -> Bool
+    }
+
     enum Stop: Equatable {
         /// Everything dirty was delivered.
         case done
@@ -93,16 +108,19 @@ struct Pusher {
         case failed
         /// Reading Health failed; try again on the next trigger.
         case unreadable(String)
+        /// Out of time; the next sync carries on from the lane as it stands.
+        case stopped
     }
 
     /// Sends the queue, then batches of the remaining dirty days, until the
     /// lane is clean or a delivery fails.
-    func run(_ start: Lane, lane id: UUID, destination: DestinationType, build: Build,
-             progress: Progress = { _ in }) async -> (Lane, Stop) {
-        var lane = start
+    func run(lane id: UUID, access: LaneAccess, destination: DestinationType, build: Build,
+             progress: Progress = { _ in }) async -> Stop {
         var sent = 0
         var attempted = Set<Day>()
         while true {
+            if await access.shouldStop() { return .stopped }
+            guard let lane = await access.read() else { return .done }
             if lane.queue.isEmpty {
                 let pending = lane.dirty.days.filter { !attempted.contains($0) && !lane.covered($0) }
                 guard let days = DirtyRules.batches(pending, firstRun: lane.firstRun).first else { break }
@@ -110,16 +128,17 @@ struct Pusher {
                 do {
                     for batch in try await split(days, build: build) {
                         try files.writeBatch(batch.body, lane: id, id: batch.meta.id)
-                        lane.queue.append(batch.meta)
+                        let meta = batch.meta
+                        await access.update { $0.queue.append(meta) }
                     }
                 } catch {
-                    return (lane, .unreadable(error.localizedDescription))
+                    return .unreadable(error.localizedDescription)
                 }
                 continue
             }
             let batch = lane.queue[0]
             guard let body = files.readBatch(lane: id, id: batch.id) else {
-                lane.queue.removeFirst()
+                await access.update { $0.queue.removeAll { $0.id == batch.id } }
                 continue
             }
             if sent > 0 { await pause(Pusher.spacing) }
@@ -127,34 +146,48 @@ struct Pusher {
             let delivery = await destination.deliver(body)
             sent += 1
             let at = now()
-            lane.record(LogEntry(at: at, days: batch.days, delivery: delivery))
+            let entry = LogEntry(at: at, days: batch.days, delivery: delivery)
             switch delivery.verdict {
             case .accepted:
-                lane.queue.removeFirst()
                 files.removeBatch(lane: id, id: batch.id)
-                lane.dirty.clear(batch.days, readAt: batch.readAt)
-                lane.succeeded(now: at)
+                await access.update { lane in
+                    lane.record(entry)
+                    lane.queue.removeAll { $0.id == batch.id }
+                    lane.dirty.clear(batch.days, readAt: batch.readAt)
+                    lane.succeeded(now: at)
+                }
                 await progress(.accepted(batch.days))
             case .authFailed:
-                lane.attention = delivery.message
-                lane.lastError = delivery.message
-                return (lane, .failed)
+                await access.update { lane in
+                    lane.record(entry)
+                    lane.attention = delivery.message
+                    lane.lastError = delivery.message
+                }
+                return .failed
             case .rejected:
                 // The same bytes would be refused again: drop them, keep the
                 // days dirty for a fixed app or receiver, and back off.
-                lane.queue.removeFirst()
                 files.removeBatch(lane: id, id: batch.id)
-                lane.lastError = delivery.message
-                lane.backOff(now: at)
-                return (lane, .failed)
+                await access.update { lane in
+                    lane.record(entry)
+                    lane.queue.removeAll { $0.id == batch.id }
+                    lane.lastError = delivery.message
+                    lane.backOff(now: at)
+                }
+                return .failed
             case .retry:
-                lane.lastError = delivery.message
-                lane.backOff(now: at)
-                return (lane, .failed)
+                await access.update { lane in
+                    lane.record(entry)
+                    lane.lastError = delivery.message
+                    lane.backOff(now: at)
+                }
+                return .failed
             }
         }
-        if lane.dirty.isEmpty { lane.firstRun = false }
-        return (lane, .done)
+        await access.update { lane in
+            if lane.dirty.isEmpty { lane.firstRun = false }
+        }
+        return .done
     }
 
     /// One batch for the days, or several when it would pass maxBytes.

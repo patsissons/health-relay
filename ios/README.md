@@ -9,7 +9,7 @@ and the body it sends in [`../docs/schema.md`](../docs/schema.md).
 ios/
 ├── project.yml            XcodeGen source of HealthRelay.xcodeproj (generated, not committed)
 ├── Config/Base.xcconfig   includes Local.xcconfig (your signing team; not committed)
-├── HealthRelay/           the app: Status, Destinations, Seed (Debug, simulator only)
+├── HealthRelay/           the app: Pipelines, Settings, Seed (Debug, simulator only)
 ├── HealthRelayUITests/    end to end on a simulator against tools/receiver.mjs
 └── HealthRelayKit/        the package: Sources/ and Tests/
 ```
@@ -54,7 +54,7 @@ xcodebuild -project HealthRelay.xcodeproj -scheme HealthRelay \
 ```
 
 The UI test drives the whole app on a simulator: Health permission,
-seeding a week of samples, adding a destination, Test, Sync now and the
+seeding a week of samples, adding a pipeline, Test, Run and the
 delivery log. Start the reference receiver first:
 
 ```sh
@@ -87,14 +87,14 @@ screenshots come from it.
      build/device/Build/Products/Release-iphoneos/HealthRelay.app
    ```
 
-3. Status › **Allow Health access**, turn everything on.
-4. Destinations › **+**: the receiver's URL and token, Save, then **Test**
+3. Pipelines › **Allow Health access**, turn everything on.
+4. Pipelines › **+**: the receiver's URL and token, Save, then open it and **Test**
    (expect a 2xx). Or scan the receiver's setup QR code with the Camera
    (`healthrelay://destination?...`, see `docs/receivers.md`), review and
    Save.
-5. Status › **Sync now**: the first run sends the last 30 days, one day
+5. **Run** on its card: the first run sends the last 30 days, one day
    per request.
-6. Turn on **Sync automatically** (off by default), leave it overnight and
+6. Edit its trigger to **Health changes** (manual by default), leave it overnight and
    check for an unattended delivery the next morning in the destination's
    log.
 

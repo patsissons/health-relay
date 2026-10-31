@@ -9,6 +9,6 @@ let package = Package(
     ],
     targets: [
         .target(name: "HealthRelayKit"),
-        .testTarget(name: "HealthRelayKitTests", dependencies: ["HealthRelayKit"]),
+        .testTarget(name: "HealthRelayKitTests", dependencies: ["HealthRelayKit"], exclude: ["Golden"]),
     ]
 )
