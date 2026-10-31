@@ -1,12 +1,12 @@
 import Foundation
 
 /// A destination's settings carried in a link, for a receiver to show as a
-/// QR code: `healthrelay://destination?name=<label>&url=<push URL>&token=<bearer>`,
+/// QR code: `healthdatarelay://destination?name=<label>&url=<push URL>&token=<bearer>`,
 /// values percent-encoded. `url` is required; `name`, `token` and repeated
 /// `header=<Name>: <Value>` are optional, and unknown parameters are ignored.
 /// The app only fills the destination editor from it; the user saves.
 public struct SetupLink: Sendable, Equatable {
-    public static let scheme = "healthrelay"
+    public static let scheme = "healthdatarelay"
     public static let action = "destination"
 
     public var endpoint: HTTPEndpoint

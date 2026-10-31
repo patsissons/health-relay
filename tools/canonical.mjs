@@ -1,4 +1,4 @@
-// Canonical JSON for the Health Relay schema: keys sorted at every level,
+// Canonical JSON for the Health Data Relay schema: keys sorted at every level,
 // no whitespace, slashes not escaped (JSON.stringify's own escaping). Every
 // platform's encoder must produce these bytes for the same value.
 //

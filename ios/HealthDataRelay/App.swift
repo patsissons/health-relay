@@ -1,8 +1,8 @@
-import HealthRelayKit
+import HealthDataRelayKit
 import SwiftUI
 
 @main
-struct HealthRelayApp: App {
+struct HealthDataRelayApp: App {
     @State private var model = AppModel()
     @Environment(\.scenePhase) private var phase
 
@@ -31,7 +31,7 @@ struct HealthRelayApp: App {
             .alert("Not a setup link", isPresented: Binding(get: { model.badLink }, set: { model.badLink = $0 })) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text("Health Relay opens links of the form healthrelay://destination?url=…, usually from a destination's QR code.")
+                Text("Health Data Relay opens links of the form healthdatarelay://destination?url=…, usually from a destination's QR code.")
             }
         }
         .onChange(of: phase) { _, now in

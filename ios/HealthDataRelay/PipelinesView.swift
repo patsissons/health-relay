@@ -1,4 +1,4 @@
-import HealthRelayKit
+import HealthDataRelayKit
 import SwiftUI
 
 /// One card per pipeline: what it does, how it stands, and when it runs.
@@ -16,7 +16,7 @@ struct PipelinesView: View {
                         Notice {
                             Label("Saved settings could not be read", systemImage: "exclamationmark.triangle.fill")
                                 .font(.headline)
-                            Text("Health Relay started fresh, so pipelines need adding again. Your Health data is not affected. The old file is kept until you dismiss this.")
+                            Text("Health Data Relay started fresh, so pipelines need adding again. Your Health data is not affected. The old file is kept until you dismiss this.")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                             Button("Dismiss") { Task { await model.dismissSetAsideState() } }
@@ -32,7 +32,7 @@ struct PipelinesView: View {
                                     .font(.headline)
                             }
                             .accessibilityIdentifier("authorize")
-                            Text("Health Relay reads your Health data only to send it where your pipelines say.")
+                            Text("Health Data Relay reads your Health data only to send it where your pipelines say.")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
@@ -396,9 +396,9 @@ struct PipelineEditor: View {
             Section {
                 TextField("Name", text: $name)
                     .accessibilityIdentifier("pipeline-name")
-                LabeledContent("Transform", value: TransformSpec.healthRelayPush.title)
+                LabeledContent("Transform", value: TransformSpec.healthDataRelayPush.title)
             } footer: {
-                Text("Sends each day that changed, whole, in the Health Relay schema, deletions included.")
+                Text("Sends each day that changed, whole, in the Health Data Relay schema, deletions included.")
             }
 
             Section {
@@ -531,7 +531,7 @@ struct PipelineEditor: View {
 }
 
 extension Pipeline {
-    /// "Health Relay → example.com"
+    /// "Health Data Relay → example.com"
     var flow: String {
         "\(transform.title) → \(endpoint.url.host() ?? "")"
     }
@@ -540,7 +540,7 @@ extension Pipeline {
 extension TransformSpec {
     var title: String {
         switch self {
-        case .healthRelayPush: "Health Relay"
+        case .healthDataRelayPush: "Health Data Relay"
         }
     }
 }

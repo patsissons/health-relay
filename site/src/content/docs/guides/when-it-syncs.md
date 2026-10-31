@@ -13,7 +13,7 @@ read them in full from Health, and send them to the pipeline's destination.
 Each pipeline has its own trigger, set when you add or edit it.
 
 **Manual**, the default: only tapping **Run** or **Run now**. With every pipeline
-manual, Health Relay doesn't ask iOS to wake it at all.
+manual, Health Data Relay doesn't ask iOS to wake it at all.
 
 **A schedule**: every so many minutes, hours, days or weeks after its last run.
 It runs at the first chance once due: when iOS gives the app background time, or
@@ -22,7 +22,7 @@ without waiting for the next interval.
 
 **When Health changes**: any of these.
 
-- **Health records something new.** Health Relay asks iOS to wake it when
+- **Health records something new.** Health Data Relay asks iOS to wake it when
   data arrives: hourly at most for most types, daily for sleep, stand hours
   and mindful minutes. Many types arrive together, so wakes within five
   minutes of the last run are skipped; their changes go with the next one.
@@ -49,7 +49,7 @@ card says so and the next run picks the days up; nothing is lost.
 
 ## Which days a run sends
 
-- **Days with new data.** Health Relay tracks every type with a
+- **Days with new data.** Health Data Relay tracks every type with a
   bookmark, so it knows exactly which days gained samples since the last
   run, including a late watch sync for last Tuesday. A pipeline left unused
   for months still gets the days that changed while it was idle.
@@ -72,7 +72,7 @@ next weekly sweep.
 
 ## When a destination fails
 
-Health Relay keeps each batch on disk until the destination accepts it,
+Health Data Relay keeps each batch on disk until the destination accepts it,
 and retries with growing gaps (1 minute, doubling, up to 6 hours). A
 destination that refuses the token stops until you fix it; see
 [Troubleshooting](/guides/troubleshooting/). Other destinations carry on

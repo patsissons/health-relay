@@ -1,6 +1,6 @@
 import BackgroundTasks
 import HealthKit
-import HealthRelayKit
+import HealthDataRelayKit
 import Observation
 import SwiftUI
 
@@ -8,7 +8,7 @@ import SwiftUI
 /// the app knows (Health authorization, per-type recency).
 @MainActor @Observable
 final class AppModel {
-    static let refreshTask = "com.patsissons.healthrelay.refresh"
+    static let refreshTask = "com.patsissons.healthdatarelay.refresh"
 
     let engine: Engine
     let health: LiveHealthStore
@@ -37,7 +37,7 @@ final class AppModel {
         health = LiveHealthStore()
         let model = AppModel.deviceModel
         let os = UIDevice.current.systemVersion
-        let app = "Health Relay \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0")"
+        let app = "Health Data Relay \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0")"
         let files = FileStore.standard()
         // Read now, not from the engine later: a background wake needs its
         // observers registered during launch.
@@ -69,7 +69,7 @@ final class AppModel {
     /// For UI tests and screenshots: start from nothing.
     static func resetState() {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        try? FileManager.default.removeItem(at: support.appendingPathComponent("HealthRelay"))
+        try? FileManager.default.removeItem(at: support.appendingPathComponent("HealthDataRelay"))
     }
 
     // MARK: Health

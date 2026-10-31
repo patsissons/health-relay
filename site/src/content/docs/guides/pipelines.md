@@ -5,12 +5,12 @@ sidebar:
   order: 2
 ---
 
-Everything Health Relay does is a **pipeline**, and each one shows as a card
+Everything Health Data Relay does is a **pipeline**, and each one shows as a card
 on the Pipelines tab.
 
 | Part | What it does | Today |
 |---|---|---|
-| **Transform** | The shape to send your days in | `Health Relay`, [the schema](/reference/schema/) |
+| **Transform** | The shape to send your days in | `Health Data Relay`, [the schema](/reference/schema/) |
 | **Destination** | Where they go | An HTTP endpoint |
 | **Trigger** | When it runs | Manual, when Health changes, or a schedule |
 
@@ -72,7 +72,7 @@ Tap a card for **Run now**, its parts and **Edit**, and:
 iOS 16 apps can't read the name you gave your phone, so set it here if you send
 more than one phone to the same place.
 
-**Data by type**: every type Health Relay reads, split into those with data in
+**Data by type**: every type Health Data Relay reads, split into those with data in
 the last 30 days and those without. iOS never tells an app which permissions you
 turned off, so a type you expected under **No data in 30 days** usually means its
-switch is off in Settings › Health › Data Access & Devices › Health Relay.
+switch is off in Settings › Health › Data Access & Devices › Health Data Relay.

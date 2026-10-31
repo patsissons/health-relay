@@ -1,5 +1,5 @@
 import Foundation
-@testable import HealthRelayKit
+@testable import HealthDataRelayKit
 
 /// An in-memory HealthStore. Quantity samples are kept in the catalog's
 /// unit; statistics are computed from them the way HealthKit would (a

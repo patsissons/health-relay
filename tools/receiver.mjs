@@ -1,4 +1,4 @@
-// A throwaway receiver for the Health Relay schema (docs/schema.md): accepts
+// A throwaway receiver for the Health Data Relay schema (docs/schema.md): accepts
 // a push, checks its shape, prints what it carries and answers as the schema
 // says. It stores nothing unless --out is given. Any platform's app is tested
 // against it; it proves the app assumes nothing about one destination.

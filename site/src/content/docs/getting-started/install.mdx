@@ -1,6 +1,6 @@
 ---
 title: Install
-description: Build Health Relay from source and run it on your iPhone.
+description: Build Health Data Relay from source and run it on your iPhone.
 sidebar:
   order: 1
 ---
@@ -8,7 +8,7 @@ sidebar:
 import { Image } from 'astro:assets'
 import history from '../../../assets/screenshots/health-history.png'
 
-Health Relay is not on the App Store yet. You build it from source with
+Health Data Relay is not on the App Store yet. You build it from source with
 Xcode and install it on your own iPhone, which takes about ten minutes.
 
 ## What you need
@@ -41,19 +41,19 @@ Xcode and install it on your own iPhone, which takes about ten minutes.
    DEVELOPMENT_TEAM = ABCDE12345
    ```
 
-3. Open `HealthRelay.xcodeproj`. In **Xcode › Settings › Accounts**, sign
+3. Open `HealthDataRelay.xcodeproj`. In **Xcode › Settings › Accounts**, sign
    in with the Apple ID of your developer account.
 
 4. Connect your iPhone, choose it as the run destination and press **Run**.
    The first time, enable **Developer Mode** on the phone when iOS asks
    (Settings › Privacy & Security › Developer Mode).
 
-5. In Health Relay, tap **Allow Health access** on the Pipelines tab. In the
+5. In Health Data Relay, tap **Allow Health access** on the Pipelines tab. In the
    sheet, tap **Select All**, scroll to the end and tap **Continue** (on
    iOS 26 and earlier: **Turn On All**, then **Allow**).
 
 6. iOS 27 then asks how much history to share. Either choice works:
-   Health Relay never sends a day from before the history you shared, so
+   Health Data Relay never sends a day from before the history you shared, so
    nothing at a destination is erased by a day it couldn't read.
 
    <Image src={history} alt="The iOS Health sheet asking how much historical data to share: Past 30 Days and Future Data, or All Recorded Data and Future Data" class="phone" />
@@ -66,7 +66,7 @@ Out of the box, a pipeline sends days only when you tap **Run**. To have it run
 on its own, on a schedule or when Health records something new, edit its
 **Trigger**, and:
 
-- Leave **Background App Refresh** on for Health Relay (Settings ›
+- Leave **Background App Refresh** on for Health Data Relay (Settings ›
   General › Background App Refresh).
 - Don't force-quit the app from the app switcher. iOS does not wake apps
   the user has swiped away.

@@ -13,8 +13,8 @@ like, and they never hold each other up.
 
 ## Scan a setup code
 
-If your receiver shows a **Health Relay QR code** when it gives you a
-token, point the iPhone's Camera at it and tap **Open in Health Relay**.
+If your receiver shows a **Health Data Relay QR code** when it gives you a
+token, point the iPhone's Camera at it and tap **Open in Health Data Relay**.
 The pipeline editor opens with the name, URL and token filled in.
 Check the host it names is where you want your Health data to go, then tap
 **Save**. Nothing is added until you do.
@@ -40,7 +40,7 @@ Receivers: the link format is in
 
 ## Test it
 
-Tap the pipeline's card, then **Test**. Health Relay sends an empty push
+Tap the pipeline's card, then **Test**. Health Data Relay sends an empty push
 (no days, no data) and shows the receiver's answer. Every receiver of the
 schema answers it with success, so a green `200` means the URL and token
 are right.
@@ -65,7 +65,7 @@ The card reads **Up to date** when everything has been delivered. Open it for
 
 Older history is not sent. If your receiver needs years of history, import
 a full Apple Health export into it once (Health app › your picture ›
-Export All Health Data) and let Health Relay keep the recent days current.
+Export All Health Data) and let Health Data Relay keep the recent days current.
 
 ## Try it without a server
 

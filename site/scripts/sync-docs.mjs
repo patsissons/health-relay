@@ -14,7 +14,7 @@ const repo = 'https://github.com/patsissons/health-relay/blob/main'
 const pages = [
   { file: 'schema.md', slug: 'schema', title: 'The schema', order: 1, description: 'The apple-push/1 body every platform sends and every receiver accepts.' },
   { file: 'design.md', slug: 'behaviour', title: 'Behaviour', order: 2, description: 'Which days are sent, batching, retries and triggers, on every platform.' },
-  { file: 'receivers.md', slug: 'receivers', title: 'Writing a receiver', order: 3, description: 'What an HTTP endpoint needs to accept Health Relay pushes.' },
+  { file: 'receivers.md', slug: 'receivers', title: 'Writing a receiver', order: 3, description: 'What an HTTP endpoint needs to accept Health Data Relay pushes.' },
 ]
 const slugOf = Object.fromEntries(pages.map((p) => [p.file, p.slug]))
 

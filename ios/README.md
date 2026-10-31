@@ -1,17 +1,17 @@
-# Health Relay for iOS
+# Health Data Relay for iOS
 
-The iPhone app: SwiftUI over `HealthRelayKit`, a local Swift package that
+The iPhone app: SwiftUI over `HealthDataRelayKit`, a local Swift package that
 holds all the logic (reading HealthKit, the schema, dirty days, delivery).
 The behaviour it implements is in [`../docs/design.md`](../docs/design.md)
 and the body it sends in [`../docs/schema.md`](../docs/schema.md).
 
 ```
 ios/
-├── project.yml            XcodeGen source of HealthRelay.xcodeproj (generated, not committed)
-├── Config/Base.xcconfig   includes Local.xcconfig (your signing team; not committed)
-├── HealthRelay/           the app: Pipelines, Settings, Seed (Debug, simulator only)
-├── HealthRelayUITests/    end to end on a simulator against tools/receiver.mjs
-└── HealthRelayKit/        the package: Sources/ and Tests/
+├── project.yml                XcodeGen source of HealthDataRelay.xcodeproj (generated, not committed)
+├── Config/Base.xcconfig       includes Local.xcconfig (your signing team; not committed)
+├── HealthDataRelay/           the app: Pipelines, Settings, Seed (Debug, simulator only)
+├── HealthDataRelayUITests/    end to end on a simulator against tools/receiver.mjs
+└── HealthDataRelayKit/        the package: Sources/ and Tests/
 ```
 
 ## Requirements
@@ -27,19 +27,19 @@ ios/
 cd ios
 cp Local.xcconfig.example Local.xcconfig   # then set DEVELOPMENT_TEAM
 xcodegen
-open HealthRelay.xcodeproj
+open HealthDataRelay.xcodeproj
 ```
 
 Re-run `xcodegen` after adding or removing files. The bundle id is
-`com.patsissons.healthrelay`; settle it before an App Store release, since it
-cannot change after one.
+`com.patsissons.healthdatarelay`. It is final: App Store Connect has it, and
+it cannot change once a build is uploaded.
 
 ## Test
 
 The package's tests need no simulator (Swift Testing, a fake HealthStore):
 
 ```sh
-cd ios/HealthRelayKit && swift test
+cd ios/HealthDataRelayKit && swift test
 ```
 
 They include the contract check: the fixture's synthetic data read and
@@ -48,9 +48,9 @@ On a simulator the same suite also checks every catalog unit against the
 real HealthKit:
 
 ```sh
-xcodebuild -project HealthRelay.xcodeproj -scheme HealthRelay \
+xcodebuild -project HealthDataRelay.xcodeproj -scheme HealthDataRelay \
   -destination 'platform=iOS Simulator,name=iPhone 18 Pro' \
-  -only-testing:HealthRelayKitTests test
+  -only-testing:HealthDataRelayKitTests test
 ```
 
 The UI test drives the whole app on a simulator: Health permission,
@@ -61,9 +61,9 @@ delivery log. Start the reference receiver first:
 node tools/receiver.mjs --token test-token --out /tmp/pushes   # from the repo root
 TEST_RUNNER_RECEIVER_URL=http://127.0.0.1:8787/ TEST_RUNNER_RECEIVER_TOKEN=test-token \
 TEST_RUNNER_SCREENSHOTS=/tmp/shots \
-xcodebuild -project HealthRelay.xcodeproj -scheme HealthRelay \
+xcodebuild -project HealthDataRelay.xcodeproj -scheme HealthDataRelay \
   -destination 'platform=iOS Simulator,name=iPhone 18 Pro' \
-  -only-testing:HealthRelayUITests test
+  -only-testing:HealthDataRelayUITests test
 ```
 
 `TEST_RUNNER_SCREENSHOTS` saves each step's screenshot; the site's
@@ -80,17 +80,17 @@ screenshots come from it.
 
    ```sh
    UDID=$(xcrun devicectl list devices | awk '/physical/' | grep -oE '[0-9A-F]{8}-[0-9A-F]{16}' | head -1)
-   xcodebuild -project HealthRelay.xcodeproj -scheme HealthRelay \
+   xcodebuild -project HealthDataRelay.xcodeproj -scheme HealthDataRelay \
      -configuration Release -destination "id=$UDID" -derivedDataPath build/device \
      -allowProvisioningUpdates -allowProvisioningDeviceRegistration build
    xcrun devicectl device install app --device "$UDID" \
-     build/device/Build/Products/Release-iphoneos/HealthRelay.app
+     build/device/Build/Products/Release-iphoneos/HealthDataRelay.app
    ```
 
 3. Pipelines › **Allow Health access**, turn everything on.
 4. Pipelines › **+**: the receiver's URL and token, Save, then open it and **Test**
    (expect a 2xx). Or scan the receiver's setup QR code with the Camera
-   (`healthrelay://destination?...`, see `docs/receivers.md`), review and
+   (`healthdatarelay://destination?...`, see `docs/receivers.md`), review and
    Save.
 5. **Run** on its card: the first run sends the last 30 days, one day
    per request.

@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import HealthRelayKit
+@testable import HealthDataRelayKit
 
 @Suite struct JSONTests {
     @Test(arguments: [
@@ -172,7 +172,7 @@ import Testing
     @Test func readsWhatAReceiverEncodes() throws {
         // As a receiver builds it with encodeURIComponent.
         let link = try #require(SetupLink(URL(string:
-            "healthrelay://destination?name=Cubby%20(Pat)&url=https%3A%2F%2Fcubby.example.com%2Fapi%2Fhealth%2Fpush%3Fx%3D1&token=a%2Bb%2Fc%3D%26d&header=X-Home%3A%20blue&v=1")!))
+            "healthdatarelay://destination?name=Cubby%20(Pat)&url=https%3A%2F%2Fcubby.example.com%2Fapi%2Fhealth%2Fpush%3Fx%3D1&token=a%2Bb%2Fc%3D%26d&header=X-Home%3A%20blue&v=1")!))
         #expect(link.endpoint.url.absoluteString == "https://cubby.example.com/api/health/push?x=1")
         #expect(link.token == "a+b/c=&d")
         #expect(link.name == "Cubby (Pat)")
@@ -181,16 +181,16 @@ import Testing
     }
 
     @Test func onlyTheURLIsRequired() throws {
-        let link = try #require(SetupLink(URL(string: "HealthRelay://DESTINATION?url=http%3A%2F%2F192.168.1.5%3A8787&token=")!))
+        let link = try #require(SetupLink(URL(string: "HealthDataRelay://DESTINATION?url=http%3A%2F%2F192.168.1.5%3A8787&token=")!))
         #expect(link.endpoint == HTTPEndpoint(url: URL(string: "http://192.168.1.5:8787")!))
         #expect(link.token == nil && link.name == nil)
-        #expect(link.url.absoluteString == "healthrelay://destination?url=http%3A%2F%2F192.168.1.5%3A8787")
+        #expect(link.url.absoluteString == "healthdatarelay://destination?url=http%3A%2F%2F192.168.1.5%3A8787")
     }
 
     @Test(arguments: [
-        "healthrelay://destination", "healthrelay://destination?token=x", "healthrelay://add?url=https%3A%2F%2Fa.example",
-        "https://destination?url=https%3A%2F%2Fa.example", "healthrelay://destination?url=ftp%3A%2F%2Fa.example",
-        "healthrelay://destination?url=nohost",
+        "healthdatarelay://destination", "healthdatarelay://destination?token=x", "healthdatarelay://add?url=https%3A%2F%2Fa.example",
+        "https://destination?url=https%3A%2F%2Fa.example", "healthdatarelay://destination?url=ftp%3A%2F%2Fa.example",
+        "healthdatarelay://destination?url=nohost",
     ])
     func rejectsAnythingElse(_ text: String) {
         #expect(SetupLink(URL(string: text)!) == nil)

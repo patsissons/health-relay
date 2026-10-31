@@ -1,4 +1,4 @@
-import HealthRelayKit
+import HealthDataRelayKit
 import SwiftUI
 
 /// What belongs to the whole app: Health access, this phone's name, and
@@ -82,7 +82,7 @@ struct TypesView: View {
             } header: {
                 Text("No data in 30 days")
             } footer: {
-                Text("If you expected data here, check Settings > Health > Data Access & Devices > Health Relay.")
+                Text("If you expected data here, check Settings > Health > Data Access & Devices > Health Data Relay.")
             }
         }
         .navigationTitle("Data by type")

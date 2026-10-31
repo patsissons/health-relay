@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import HealthRelayKit
+@testable import HealthDataRelayKit
 
 /// A destination that runs a hook during each delivery, while the engine is
 /// suspended, then accepts.
@@ -46,7 +46,7 @@ struct HookRig {
         let clock = clock
         engine = Engine(.init(
             store: store, files: files, tokens: MemoryTokenStore(),
-            device: { Device(name: $0, model: "iPhone17,1", os: "26.0", app: "Health Relay test") },
+            device: { Device(name: $0, model: "iPhone17,1", os: "26.0", app: "Health Data Relay test") },
             calendar: { .local(T.vancouver) },
             now: { clock.now },
             pause: { _ in },

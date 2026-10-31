@@ -17,14 +17,14 @@ passing test clears the state and the waiting days go with the next run.
 ## Deliveries fail with 400
 
 The receiver answered, but refused the body. The log shows its message,
-which usually says what it expected. Health Relay keeps those days waiting
+which usually says what it expected. Health Data Relay keeps those days waiting
 and retries later, so once the receiver is fixed they arrive on their own
 (or tap **Re-send recent days**).
 
 ## "Retrying" with no answer
 
 The phone couldn't reach the receiver: no network, a typo in the URL, a
-server that is down, or a firewall. Health Relay retries on its own with
+server that is down, or a firewall. Health Data Relay retries on its own with
 growing gaps. **Test** checks the connection on demand.
 
 An `http://` URL only works for addresses on your local network; anything
@@ -36,7 +36,7 @@ on the internet needs `https://`.
   Give it a schedule or **When Health changes**: open it and tap **Edit**.
 - Health data is locked until the phone is unlocked, so overnight changes
   are sent after the first unlock in the morning.
-- Check that **Background App Refresh** is on for Health Relay, and that
+- Check that **Background App Refresh** is on for Health Data Relay, and that
   you haven't swiped the app away in the app switcher.
 - Low Power Mode delays background work.
 
@@ -47,7 +47,7 @@ pipeline if its last successful run is more than an hour old.
 
 Open **Settings › Data by type**. If the type is under **No data in 30
 days**, either nothing recorded it or its permission is off: Settings ›
-Health › Data Access & Devices › Health Relay, and turn it on.
+Health › Data Access & Devices › Health Data Relay, and turn it on.
 
 ## The receiver shows old values for a day
 

@@ -1,7 +1,7 @@
 #if DEBUG && targetEnvironment(simulator)
 import CoreLocation
 import HealthKit
-import HealthRelayKit
+import HealthDataRelayKit
 import SwiftUI
 
 /// Debug builds only: writes a week of plausible synthetic samples so the
@@ -38,7 +38,7 @@ struct SeedView: View {
                             .accessibilityIdentifier("seed-status")
                     }
                 } footer: {
-                    Text("Writes steps, energy, heart rate, HRV, weight, sleep, mindful minutes, blood pressure, sound levels, a symptom and runs with routes. Samples are marked as written by Health Relay.")
+                    Text("Writes steps, energy, heart rate, HRV, weight, sleep, mindful minutes, blood pressure, sound levels, a symptom and runs with routes. Samples are marked as written by Health Data Relay.")
                 }
             }
             .navigationTitle("Seed")

@@ -37,11 +37,11 @@ public final class FileStore: @unchecked Sendable {
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     }
 
-    /// Application Support/HealthRelay, excluded from backups (the phone's
+    /// Application Support/HealthDataRelay, excluded from backups (the phone's
     /// Health data is the source of truth; queued batches are disposable).
     public static func standard() -> FileStore {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        var dir = base.appendingPathComponent("HealthRelay", isDirectory: true)
+        var dir = base.appendingPathComponent("HealthDataRelay", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         var values = URLResourceValues()
         values.isExcludedFromBackup = true

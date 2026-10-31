@@ -1,7 +1,7 @@
 #if os(iOS)
 import HealthKit
 import Testing
-@testable import HealthRelayKit
+@testable import HealthDataRelayKit
 
 /// The catalog against the real HealthKit (run on a simulator): every unit
 /// string parses and fits its type, since HealthKit raises on a bad one.

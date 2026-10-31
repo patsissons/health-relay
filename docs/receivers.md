@@ -1,7 +1,7 @@
 # Writing a receiver
 
 A receiver is anything that accepts `POST` of the schema in
-[schema.md](schema.md) and answers with a status. Health Relay assumes
+[schema.md](schema.md) and answers with a status. Health Data Relay assumes
 nothing else about it.
 
 ## The minimum
@@ -26,10 +26,10 @@ days and per-type counts, and `--out` saves every body for inspection.
 ## Setup links and QR codes
 
 A receiver that issues tokens can save the user typing them: show a link,
-usually as a QR code, that fills in Health Relay's pipeline editor.
+usually as a QR code, that fills in Health Data Relay's pipeline editor.
 
 ```
-healthrelay://destination?name=<label>&url=<push URL>&token=<bearer>
+healthdatarelay://destination?name=<label>&url=<push URL>&token=<bearer>
 ```
 
 - Percent-encode every value (`encodeURIComponent`); tokens often contain
@@ -37,14 +37,14 @@ healthrelay://destination?name=<label>&url=<push URL>&token=<bearer>
 - `url` is required and must be `http` or `https`. `name` and `token` are
   optional, and `header=<Name>: <Value>` may repeat for extra headers.
   Unknown parameters are ignored.
-- Scanning it with the iPhone Camera offers to open Health Relay, which
+- Scanning it with the iPhone Camera offers to open Health Data Relay, which
   shows the editor filled in, with the destination's host called out. **The
   user saves; a link never adds a destination on its own.**
 - If a destination with the same `url` already exists, the link updates it
   (typically a new token) instead of adding another.
 
 ```js
-const link = 'healthrelay://destination?' + new URLSearchParams({ name, url, token })
+const link = 'healthdatarelay://destination?' + new URLSearchParams({ name, url, token })
   .toString().replace(/\+/g, '%20')
 ```
 
@@ -78,7 +78,7 @@ cubby's health app (a personal dashboard) implements this schema at
 
 - **Auth.** The user mints a device token on the health app's Data tab
   ("Add a phone"); it is shown once and only its SHA-256 is stored. In
-  Health Relay the user adds an HTTP endpoint destination with that URL
+  Health Data Relay the user adds an HTTP endpoint destination with that URL
   and token, or scans the setup link's QR code shown with it.
 - **Parsing.** The push runs through the same aggregator as an Apple
   Health `export.zip` upload, so a pushed day and an exported day combine

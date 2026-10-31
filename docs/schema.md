@@ -1,6 +1,6 @@
-# The Health Relay schema (`apple-push/1`)
+# The Health Data Relay schema (`apple-push/1`)
 
-What Health Relay sends to a destination, on every platform. One push is
+What Health Data Relay sends to a destination, on every platform. One push is
 one JSON object describing some local days of Apple Health (or another
 platform's health store, in the same terms). A receiver that implements
 this document can be any HTTP endpoint; cubby's health app
@@ -26,7 +26,7 @@ Authorization: Bearer <token>        (when the destination has one)
 ```
 
 The body is one JSON object, at most 16 MB. Senders keep a batch to a few
-days (Health Relay sends at most 7 days or about 1 MB per batch, see
+days (Health Data Relay sends at most 7 days or about 1 MB per batch, see
 [design.md](design.md)) and never more than 62 days in one push.
 
 ## Body
@@ -34,7 +34,7 @@ days (Health Relay sends at most 7 days or about 1 MB per batch, see
 ```jsonc
 {
   "schema": "apple-push/1",
-  "device": { "name": "Pat’s iPhone", "model": "iPhone17,1", "os": "26.0", "app": "Health Relay 0.1" },
+  "device": { "name": "Pat’s iPhone", "model": "iPhone17,1", "os": "26.0", "app": "Health Data Relay 0.1" },
   "exportedAt": "2026-10-25T14:00:00Z",      // when the phone read Health, UTC; the push's as-of
   "tz": "America/Vancouver",                 // the phone's time zone when it read
   "days": ["2026-10-24", "2026-10-25"],      // every local day this push describes in full
@@ -81,7 +81,7 @@ combine: sums take the largest source total (iPhone and Watch both count the
 same walk), means and heart rate pool by `count`, spot values take the
 latest `latestAt`. A mean row without a positive `count` carries no weight.
 
-`unit` is the HealthKit unit string the value is in. Health Relay sends
+`unit` is the HealthKit unit string the value is in. Health Data Relay sends
 `count`, `count/min`, `kcal`, `km`, `kg`, `%`, `ms`, `min`, `cm`, `km/hr`,
 `m/s`, `m`, `mL/min·kg`, `kcal/hr·kg`, `dBASPL`, `mmHg`, `degC`, `g`, `mg`, `mcg`,
 `mL`, `appleEffortScore`; a receiver should accept any unit it can convert
@@ -154,7 +154,7 @@ beat the stand-hour samples) and the Move goal.
 ### `ecg`
 
 One recording: when, the classification, the sample rate in Hz, the
-average heart rate and the voltages in microvolts (integers). Health Relay
+average heart rate and the voltages in microvolts (integers). Health Data Relay
 sends 128 Hz: the phone averages each block of 4 samples of Apple's 512 Hz
 trace. A receiver must honour `rate` whatever it is.
 
@@ -201,7 +201,7 @@ the whole test; there is no GET or destination-specific probe.
 
 ## Canonical JSON
 
-Health Relay sends canonical JSON, and the fixtures are stored in it, so
+Health Data Relay sends canonical JSON, and the fixtures are stored in it, so
 any platform's output can be compared byte for byte:
 
 - object keys sorted at every level by UTF-16 code unit (`Array.prototype.sort`);
@@ -217,7 +217,7 @@ Receivers must not depend on key order or formatting.
 ## The fixtures and cubby's test body
 
 `fixtures/push-two-days.json` is cubby's test body (`pushBody()` in cubby's
-`scripts/health-fixture.mjs`) as Health Relay itself would send it. cubby's
+`scripts/health-fixture.mjs`) as Health Data Relay itself would send it. cubby's
 body also exercises a receiver's rejections, so the fixture differs:
 
 - no `HKQuantityTypeIdentifierNotAThing` row and no `stats` row for a
@@ -226,8 +226,8 @@ body also exercises a receiver's rejections, so the fixture differs:
 - the Withings weigh-in is `80` `kg`, not `176.37` `lb` (the app reads every
   type in one unit; a receiver still converts whatever unit it gets);
 - `stats` are ordered by day, type and source, and `samples` by start, type,
-  source, end and value, which is the order Health Relay sends;
-- `device.app` is `Health Relay 0.1`;
+  source, end and value, which is the order Health Data Relay sends;
+- `device.app` is `Health Data Relay 0.1`;
 - the mindful session's value is `HKCategoryValueNotApplicable`, not `""`;
 - the ECG is decimated to 128 Hz on the phone (256 samples at `rate: 128`
   instead of 1024 at 512); the trace a receiver keeps is the same.

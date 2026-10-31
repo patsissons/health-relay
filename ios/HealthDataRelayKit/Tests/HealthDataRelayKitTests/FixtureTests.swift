@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import HealthRelayKit
+@testable import HealthDataRelayKit
 
 /// The synthetic data behind fixtures/push-two-days.json, read and encoded
 /// as the app does, must be the fixture byte for byte.
@@ -10,7 +10,7 @@ import Testing
         .deletingLastPathComponent().deletingLastPathComponent()
         .appendingPathComponent("fixtures")
 
-    static let device = Device(name: "Test iPhone", model: "iPhone17,1", os: "26.0", app: "Health Relay 0.1")
+    static let device = Device(name: "Test iPhone", model: "iPhone17,1", os: "26.0", app: "Health Data Relay 0.1")
 
     static func store() -> FakeHealthStore {
         let s = FakeHealthStore()

@@ -1,13 +1,13 @@
 ---
 title: What is sent
-description: The Health data Health Relay reads, what leaves the phone, and what never does.
+description: The Health data Health Data Relay reads, what leaves the phone, and what never does.
 sidebar:
   order: 3
 ---
 
 ## Your data goes only where you send it
 
-Health Relay has no server, account or analytics. It reads Health on your
+Health Data Relay has no server, account or analytics. It reads Health on your
 phone and sends days to the destinations you added, and nothing anywhere
 else. Tokens stay in the iPhone's Keychain. The queue of unsent batches
 lives in the app's own storage and is not backed up.
@@ -17,7 +17,7 @@ anything not listed below.
 
 ## What a day carries
 
-For each day it sends, Health Relay includes everything the phone has for
+For each day it sends, Health Data Relay includes everything the phone has for
 that day:
 
 - **Daily statistics per source** (iPhone, Watch, scale, apps), so a

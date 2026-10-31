@@ -6,7 +6,7 @@ import XCTest
 /// TEST_RUNNER_RECEIVER_URL; TEST_RUNNER_SCREENSHOTS saves each step's
 /// screenshot as a PNG in that directory.
 @MainActor
-final class HealthRelayUITests: XCTestCase {
+final class HealthDataRelayUITests: XCTestCase {
     let env = ProcessInfo.processInfo.environment
     var app: XCUIApplication!
 
@@ -202,7 +202,7 @@ final class HealthRelayUITests: XCTestCase {
 
     /// A setup link fills the editor; the same URL again updates, not adds.
     func testSetupLink() throws {
-        let link = "healthrelay://destination?name=Cubby&url=http%3A%2F%2F127.0.0.1%3A8787%2F&token="
+        let link = "healthdatarelay://destination?name=Cubby&url=http%3A%2F%2F127.0.0.1%3A8787%2F&token="
         open(link + "first")
         XCTAssertTrue(app.textFields["pipeline-url"].waitForExistence(timeout: 10))
         XCTAssertTrue(text("From a setup link").exists)
@@ -220,7 +220,7 @@ final class HealthRelayUITests: XCTestCase {
         tab("Pipelines")
         XCTAssertEqual(app.staticTexts.matching(identifier: "Cubby").count, 1)
 
-        open("healthrelay://destination?name=x")
+        open("healthdatarelay://destination?name=x")
         XCTAssertTrue(app.alerts["Not a setup link"].waitForExistence(timeout: 5))
     }
 

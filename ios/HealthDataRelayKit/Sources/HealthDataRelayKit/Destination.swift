@@ -146,7 +146,7 @@ public protocol TokenStore: Sendable {
 public struct KeychainTokenStore: TokenStore {
     public let service: String
 
-    public init(service: String = "health-relay.destination-token") {
+    public init(service: String = "health-data-relay.destination-token") {
         self.service = service
     }
 

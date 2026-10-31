@@ -53,7 +53,7 @@ public enum ExtractSpec: Sendable, Equatable {
 /// How a pipeline turns what it extracted into what it delivers. The native
 /// push is the schema (docs/schema.md), built in memory one batch at a time.
 public enum TransformSpec: Sendable, Equatable {
-    case healthRelayPush
+    case healthDataRelayPush
 }
 
 /// One pipeline as the screens show it: Extract, Transform, Load and a
@@ -91,7 +91,7 @@ public struct Pipeline: Sendable, Identifiable, Equatable {
     public var id: UUID { destination.id }
     public var name: String { destination.name }
     public var extract: ExtractSpec { .changedDays }
-    public var transform: TransformSpec { .healthRelayPush }
+    public var transform: TransformSpec { .healthDataRelayPush }
 
     public var endpoint: HTTPEndpoint {
         switch destination.kind {

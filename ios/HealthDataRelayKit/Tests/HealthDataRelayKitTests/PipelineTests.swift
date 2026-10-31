@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import HealthRelayKit
+@testable import HealthDataRelayKit
 
 @Suite struct PipelineMigrationTests {
     static func goldenFiles() throws -> FileStore {
@@ -19,7 +19,7 @@ import Testing
         let pipeline = try #require(await engine.snapshot.pipelines.first { $0.id == id })
         #expect(pipeline.name == "Paused one" && pipeline.destination.paused && pipeline.hasToken)
         #expect(pipeline.lane.dirty.count == 2 && pipeline.lane.queue.count == 1)
-        #expect(pipeline.extract == .changedDays && pipeline.transform == .healthRelayPush)
+        #expect(pipeline.extract == .changedDays && pipeline.transform == .healthDataRelayPush)
     }
 
     @Test func automaticSyncBecomesWhenHealthChangesAndOffBecomesManual() throws {

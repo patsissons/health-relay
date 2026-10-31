@@ -1,6 +1,6 @@
-# Health Relay
+# Health Data Relay
 
-Health Relay reads your health data on your phone and delivers each day,
+Health Data Relay reads your health data on your phone and delivers each day,
 exactly and incrementally, to destinations you choose: your own server, a
 self-hosted dashboard, any HTTP endpoint that speaks its open schema.
 Nothing leaves the phone except to those destinations.

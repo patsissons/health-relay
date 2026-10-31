@@ -1,6 +1,6 @@
-# Health Relay: behaviour
+# Health Data Relay: behaviour
 
-What every platform's Health Relay does, independent of its code. The
+What every platform's Health Data Relay does, independent of its code. The
 schema ([schema.md](schema.md)) says what a push looks like; this says when
 the app sends one, what it puts in it and what it does with the answer, so
 two platforms are the same product and not just the same JSON.
@@ -13,7 +13,7 @@ when. Each shows as a card: a manual one has a Run button, a scheduled one
 counts down to its next run.
 
 v1 has one Extract (the days that changed, below), one Transform (the
-in-memory `Health Relay` format, the schema one batch at a time) and one Load
+in-memory `Health Data Relay` format, the schema one batch at a time) and one Load
 (an HTTP endpoint, a *destination* below). The app shows only the last two
 parts, as the format and the destination; the Extract is not a choice yet.
 Triggers:

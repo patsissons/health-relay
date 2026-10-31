@@ -160,7 +160,7 @@ func jsRound(_ x: Double) -> Double {
 }
 
 /// What a set of days carries, every section; records are unique by id and
-/// kept in the order Health Relay sends them.
+/// kept in the order Health Data Relay sends them.
 public struct Content: Sendable, Equatable {
     public var stats: [StatRow] = []
     public var samples: [SampleRow] = []

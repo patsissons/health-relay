@@ -1,7 +1,7 @@
-# Generates HealthRelay.xcodeproj: `cd ios && xcodegen`. The project is not
+# Generates HealthDataRelay.xcodeproj: `cd ios && xcodegen`. The project is not
 # committed; this file is its source. Signing: copy Local.xcconfig.example
 # to Local.xcconfig and set your team.
-name: HealthRelay
+name: HealthDataRelay
 options:
   deploymentTarget:
     iOS: "17.0"
@@ -16,45 +16,45 @@ settings:
     MARKETING_VERSION: "0.1"
     CURRENT_PROJECT_VERSION: "1"
 packages:
-  HealthRelayKit:
-    path: HealthRelayKit
+  HealthDataRelayKit:
+    path: HealthDataRelayKit
 targets:
-  HealthRelay:
+  HealthDataRelay:
     type: application
     platform: iOS
     sources:
-      - path: HealthRelay
+      - path: HealthDataRelay
     dependencies:
-      - package: HealthRelayKit
+      - package: HealthDataRelayKit
     info:
-      path: HealthRelay/Info.plist
+      path: HealthDataRelay/Info.plist
       properties:
-        CFBundleDisplayName: Health Relay
+        CFBundleDisplayName: Health Data Relay
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
         LSRequiresIPhoneOS: true
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
-        NSHealthShareUsageDescription: Health Relay reads your Health data to send each day to the destinations you add. Nothing is sent anywhere else.
+        NSHealthShareUsageDescription: Health Data Relay reads your Health data to send each day to the destinations you add. Nothing is sent anywhere else.
         UIBackgroundModes: [fetch, processing]
-        BGTaskSchedulerPermittedIdentifiers: [com.patsissons.healthrelay.refresh]
+        BGTaskSchedulerPermittedIdentifiers: [com.patsissons.healthdatarelay.refresh]
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-        # Setup links (healthrelay://destination?url=...), usually scanned from a QR code.
+        # Setup links (healthdatarelay://destination?url=...), usually scanned from a QR code.
         CFBundleURLTypes:
-          - CFBundleURLName: com.patsissons.healthrelay.setup
-            CFBundleURLSchemes: [healthrelay]
+          - CFBundleURLName: com.patsissons.healthdatarelay.setup
+            CFBundleURLSchemes: [healthdatarelay]
     entitlements:
-      path: HealthRelay/HealthRelay.entitlements
+      path: HealthDataRelay/HealthDataRelay.entitlements
       properties:
         com.apple.developer.healthkit: true
         com.apple.developer.healthkit.access: []
         com.apple.developer.healthkit.background-delivery: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.patsissons.healthrelay
-        PRODUCT_NAME: HealthRelay
+        PRODUCT_BUNDLE_IDENTIFIER: com.patsissons.healthdatarelay
+        PRODUCT_NAME: HealthDataRelay
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -64,29 +64,29 @@ targets:
       configs:
         Debug:
           INFOPLIST_KEY_NSHealthUpdateUsageDescription: Debug builds write synthetic samples so the app can be tried on a simulator.
-  HealthRelayUITests:
+  HealthDataRelayUITests:
     type: bundle.ui-testing
     platform: iOS
     sources:
-      - path: HealthRelayUITests
+      - path: HealthDataRelayUITests
     dependencies:
-      - target: HealthRelay
+      - target: HealthDataRelay
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.patsissons.healthrelay.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: com.patsissons.healthdatarelay.uitests
         GENERATE_INFOPLIST_FILE: YES
         CODE_SIGN_STYLE: Automatic
 schemes:
-  HealthRelay:
+  HealthDataRelay:
     build:
       targets:
-        HealthRelay: all
+        HealthDataRelay: all
     run:
       config: Debug
     test:
       config: Debug
       targets:
-        - package: HealthRelayKit/HealthRelayKitTests
-        - name: HealthRelayUITests
+        - package: HealthDataRelayKit/HealthDataRelayKitTests
+        - name: HealthDataRelayUITests
     archive:
       config: Release
