@@ -8,16 +8,59 @@ public enum PipelineTrigger: Codable, Sendable, Equatable {
     /// foreground if the last success is old (docs/design.md, When to sync).
     case whenHealthChanges
     case every(Schedule)
+    /// At a time of day, on chosen days.
+    case at(TimeOfDay)
+
+    /// When a time-based trigger next comes due; nil for the others.
+    public func next(after last: Date?, calendar: Calendar = .current) -> Date? {
+        switch self {
+        case .manual, .whenHealthChanges: nil
+        case .every(let schedule): schedule.next(after: last)
+        case .at(let time): time.next(after: last, calendar: calendar)
+        }
+    }
+}
+
+/// A time of day. iOS still decides when background work happens, so this is
+/// the earliest a run can start. A time the clocks skip runs just after.
+public struct TimeOfDay: Codable, Sendable, Equatable {
+    public var hour: Int
+    public var minute: Int
+    /// 1 is Sunday, as `Calendar` counts them. Nil is every day.
+    public var weekdays: [Int]?
+    /// When it was set, so a time already past today isn't due at once.
+    public var since: Date
+
+    public init(hour: Int, minute: Int, weekdays: [Int]? = nil, since: Date) {
+        self.hour = hour
+        self.minute = minute
+        self.weekdays = weekdays
+        self.since = since
+    }
+
+    public func next(after last: Date?, calendar: Calendar) -> Date {
+        let from = max(last ?? since, since)
+        func following(_ weekday: Int?) -> Date {
+            var c = DateComponents(hour: hour, minute: minute, second: 0)
+            c.weekday = weekday
+            return calendar.nextDate(after: from, matching: c, matchingPolicy: .nextTime) ?? from.addingTimeInterval(86400)
+        }
+        guard let weekdays, !weekdays.isEmpty else { return following(nil) }
+        return weekdays.map(following).min()!
+    }
 }
 
 /// A repeating schedule: due this long after the last run. iOS decides when
 /// background work happens, so "due" is the earliest it can run.
 public struct Schedule: Codable, Sendable, Equatable {
     public enum Unit: String, Codable, Sendable, CaseIterable {
+        /// Only while the app is open: iOS has no background work this often.
+        case seconds
         case minutes, hours, days, weeks
 
         var seconds: TimeInterval {
             switch self {
+            case .seconds: 1
             case .minutes: 60
             case .hours: 3600
             case .days: 86400
@@ -38,6 +81,9 @@ public struct Schedule: Codable, Sendable, Equatable {
     }
 
     public var interval: TimeInterval { Double(count) * unit.seconds }
+
+    /// Whether it needs the app open to keep time.
+    public var isForegroundOnly: Bool { interval < 60 }
 
     public func next(after last: Date?) -> Date {
         (last ?? since).addingTimeInterval(interval)
@@ -121,8 +167,8 @@ public struct Pipeline: Sendable, Identifiable, Equatable {
             return .whenTapped
         case .whenHealthChanges:
             return .whenHealthChanges
-        case .every(let schedule):
-            let next = schedule.next(after: lane.lastRun)
+        case .every, .at:
+            let next = trigger.next(after: lane.lastRun) ?? now
             if next > now { return .next(next) }
             return .due(lane.lastMessage == Engine.lockedMessage ? .unlockIPhone : .waitingForIOS)
         }
@@ -150,6 +196,11 @@ public struct BackgroundPlan: Sendable, Equatable {
     public var dailyCatchUp = false
     /// The soonest a scheduled pipeline comes due.
     public var nextRun: Date?
+    /// The soonest one iOS could run in the background: not a schedule of seconds.
+    public var backgroundRun: Date?
+    /// A template pipeline is scheduled: its output can take longer than a
+    /// refresh allows, so ask for processing time too.
+    public var wantsLongRun = false
 
     public init() {}
 }
@@ -170,11 +221,14 @@ extension EngineState {
             case .whenHealthChanges:
                 plan.observesHealth = true
                 plan.dailyCatchUp = true
-            case .every(let schedule):
+            case .every, .at:
+                let t = trigger(for: d.id)
                 plan.observesHealth = true
-                guard !d.paused else { continue }
-                let next = schedule.next(after: lanes[d.id]?.lastRun)
+                guard !d.paused, let next = t.next(after: lanes[d.id]?.lastRun) else { continue }
                 plan.nextRun = plan.nextRun.map { min($0, next) } ?? next
+                if case .every(let schedule) = t, schedule.isForegroundOnly { continue }
+                plan.backgroundRun = plan.backgroundRun.map { min($0, next) } ?? next
+                if definitions?[d.id] != nil { plan.wantsLongRun = true }
             }
         }
         return plan

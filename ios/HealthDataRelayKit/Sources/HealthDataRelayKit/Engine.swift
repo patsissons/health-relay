@@ -6,6 +6,8 @@ public enum Trigger: String, Sendable, Codable {
     case foreground
     case refresh
     case observer
+    /// iOS's longer background processing time.
+    case processing
 }
 
 /// One destination as the screens show it.
@@ -97,6 +99,9 @@ public actor Engine {
         public var queries: HealthQuerying?
         public var makeTransport: @Sendable (LoadTarget, TransportContext) -> ArtifactTransport
         public var templateSource: @Sendable (TemplateRef) -> String?
+        public var notify: @Sendable (PipelineNotice) -> Void
+        /// Uploads large parts with iOS's background transfer service.
+        public var uploader: BackgroundUploader?
 
         public init(store: HealthStore, files: FileStore, tokens: TokenStore,
                     device: @escaping @Sendable (String) -> Device,
@@ -106,7 +111,11 @@ public actor Engine {
                     makeDestination: @escaping @Sendable (Destination, String?) -> DestinationType = Engine.httpDestination,
                     queries: HealthQuerying? = nil,
                     makeTransport: @escaping @Sendable (LoadTarget, TransportContext) -> ArtifactTransport = Engine.standardTransport,
-                    templateSource: @escaping @Sendable (TemplateRef) -> String? = Engine.builtInSource) {
+                    templateSource: @escaping @Sendable (TemplateRef) -> String? = Engine.builtInSource,
+                    notify: @escaping @Sendable (PipelineNotice) -> Void = { _ in },
+                    uploader: BackgroundUploader? = nil) {
+            self.notify = notify
+            self.uploader = uploader
             self.queries = queries
             self.makeTransport = makeTransport
             self.templateSource = templateSource
@@ -129,6 +138,8 @@ public actor Engine {
     /// background work about 30 seconds, and this leaves room for what is
     /// already under way to finish.
     public static let backgroundBudget: TimeInterval = 25
+    /// The same for iOS's processing time, which runs to minutes.
+    public static let processingBudget: TimeInterval = 240
     static let outOfTime = "Stopped at the background time limit; the next sync carries on"
     public static let lockedMessage = "Health data is unavailable while the phone is locked"
 
@@ -293,6 +304,28 @@ public actor Engine {
         changed()
     }
 
+    public func setNotices(_ id: UUID, _ notices: PipelineNotices) {
+        guard state.lanes[id] != nil else { return }
+        state.notices = (state.notices ?? [:]).merging([id: notices]) { _, new in new }
+        changed()
+    }
+
+    public func notices(for id: UUID) -> PipelineNotices { state.notices?[id] ?? PipelineNotices() }
+
+    /// Pipelines to remind about, and when: scheduled, with reminders on.
+    public var reminders: [(id: UUID, name: String, at: Date)] {
+        let calendar = env.calendar()
+        return state.destinations.compactMap { d in
+            guard !d.paused, state.notices?[d.id]?.reminder == true,
+                  let next = state.trigger(for: d.id).next(after: state.lanes[d.id]?.lastRun, calendar: calendar) else { return nil }
+            return (d.id, d.name, next)
+        }
+    }
+
+    private func log(_ kind: ActivityEntry.Kind, _ message: String) {
+        env.files.logActivity(ActivityEntry(at: env.now(), kind: kind, message: message))
+    }
+
     public func setDeviceName(_ name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         state.deviceName = trimmed.isEmpty ? "iPhone" : String(trimmed.prefix(60))
@@ -350,6 +383,7 @@ public actor Engine {
         state.triggers?[id] = nil
         state.definitions?[id] = nil
         state.cursors?[id] = nil
+        state.notices?[id] = nil
         env.files.removeLane(id)
         env.files.removePipeline(id)
         try? FileManager.default.removeItem(at: env.files.exportFolder(id))
@@ -431,6 +465,9 @@ public actor Engine {
 
     private func transport(_ target: LoadTarget, _ context: TransportContext) -> ArtifactTransport {
         if case .share = target { return ShareTransport(files: env.files, context: context) }
+        if case .web(let web) = target, let uploader = env.uploader {
+            return WebTransport(target: web, context: context, uploader: uploader, waitForUpload: limit == nil ? .seconds(600) : .seconds(15))
+        }
         return env.makeTransport(target, context)
     }
 
@@ -523,29 +560,33 @@ public actor Engine {
     /// backing off cannot send, so they are not due.
     private func dueIDs() -> Set<UUID> {
         let now = env.now()
+        let calendar = env.calendar()
         return Set(state.destinations.filter { d in
-            guard !d.paused, case .every(let schedule) = state.trigger(for: d.id) else { return false }
+            let trigger = state.trigger(for: d.id)
+            guard !d.paused, let next = trigger.next(after: state.lanes[d.id]?.lastRun, calendar: calendar) else { return false }
             let lane = state.lanes[d.id]
             guard lane?.attention == nil else { return false }
             if let after = lane?.retryAfter {
                 if after > now { return false }
                 if lane?.dirty.isEmpty == false || !env.files.artifacts(d.id).isEmpty { return true }
             }
-            return schedule.next(after: lane?.lastRun) <= now
+            return next <= now
         }.map(\.id))
     }
 
     private func start(_ trigger: Trigger, _ ids: Set<UUID>?, forced: Bool = false) async -> SyncReport {
-        let background = trigger == .observer || trigger == .refresh
+        let background = trigger == .observer || trigger == .refresh || trigger == .processing
         if let running {
             // Someone is waiting on this sync now, so it finishes.
             if !background { limit = nil }
             return await running.value
         }
-        limit = background ? env.now().addingTimeInterval(Engine.backgroundBudget) : nil
+        limit = background ? env.now().addingTimeInterval(trigger == .processing ? Engine.processingBudget : Engine.backgroundBudget) : nil
+        log(.run, "Run started: \(trigger.rawValue)\(forced ? ", from a tap" : "")")
         chosen = ids
         let task = Task { () -> SyncReport in
             let report = await self.run(trigger, only: ids, forced: forced)
+            await self.noteFinished(report)
             self.finished()
             return report
         }
@@ -557,6 +598,10 @@ public actor Engine {
         } onCancel: {
             if background { Task { await self.stopEarly() } }
         }
+    }
+
+    private func noteFinished(_ report: SyncReport) {
+        log(.run, "Run finished: \(report.message.isEmpty ? "done" : report.message)")
     }
 
     private func finished() {
@@ -708,6 +753,7 @@ public actor Engine {
             }
             // Removed while it sent: a batch written since must not linger.
             if state.lanes[id] == nil { env.files.removeLane(id) }
+            announce(d, stop)
             switch stop {
             case .done, .failed:
                 if stop == .done { report.delivered += 1 } else { report.failed += 1 }
@@ -743,6 +789,25 @@ public actor Engine {
         return report
     }
 
+    /// Records one pipeline's result and tells the user if they asked.
+    private func announce(_ d: Destination, _ stop: Pusher.Stop) {
+        let notices = state.notices?[d.id] ?? PipelineNotices()
+        let lane = state.lanes[d.id]
+        switch stop {
+        case .done:
+            log(.pipeline, "\(d.name): finished")
+            if notices.onSuccess { env.notify(PipelineNotice(pipeline: d.id, title: d.name, body: "Finished.")) }
+        case .failed:
+            let why = lane?.attention ?? lane?.lastError ?? "It didn't finish."
+            log(.pipeline, "\(d.name): failed: \(why)")
+            if notices.onFailure { env.notify(PipelineNotice(pipeline: d.id, title: d.name, body: "Didn't finish: \(why)")) }
+        case .unreadable(let why):
+            log(.pipeline, "\(d.name): couldn't read Health: \(why)")
+        case .stopped:
+            log(.pipeline, "\(d.name): stopped at the time limit")
+        }
+    }
+
     private func runTemplate(_ d: Destination, target: LoadTarget, definition: PipelineDefinition, access: Pusher.LaneAccess, calendar: Calendar, deviceName: String) async -> Pusher.Stop {
         let id = d.id
         guard let queries = env.queries, let source = templateSource(definition.template) else {
@@ -764,7 +829,7 @@ public actor Engine {
         let env = env
         let runner = ArtifactRunner(files: env.files, store: queries, calendar: calendar, now: env.now, pause: env.pause,
                                     export: { ExportInfo(device: env.device(deviceName), generatedAt: env.now(), timeZone: calendar.timeZone) },
-                                    limits: TemplateLimits(deadline: limit))
+                                    limits: TemplateLimits(deadline: limit, stop: { await self.limitReached }))
         let cursor = ArtifactRunner.CursorAccess(read: { await self.cursor(id) }, write: { await self.setCursor(id, $0) })
         // The native format's data, for a template that writes it: see `Template.usesPush`.
         let store = env.store

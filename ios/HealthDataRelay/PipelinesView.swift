@@ -356,6 +356,8 @@ struct PipelineDetail: View {
                     }
                 }
 
+                PipelineNoticesSection(pipeline: pipeline)
+
                 Section {
                     Toggle("Paused", isOn: Binding(
                         get: { pipeline.destination.paused },
@@ -402,7 +404,7 @@ struct PipelineEditor: View {
     /// Settings from a setup link, laid over the existing ones for review.
     var setup: SetupLink? = nil
 
-    private enum TriggerKind: Hashable { case manual, health, schedule }
+    private enum TriggerKind: Hashable { case manual, health, schedule, time }
 
     @State private var name = ""
     @State private var url = ""
@@ -413,6 +415,9 @@ struct PipelineEditor: View {
     @State private var unit = Schedule.Unit.hours
     @State private var saved: PipelineTrigger?
     @State private var loaded = false
+    @State private var timeOfDay = Calendar.current.date(bySettingHour: 7, minute: 0, second: 0, of: .now) ?? .now
+    /// Calendar weekdays, 1 for Sunday. All of them means every day.
+    @State private var weekdays = Set(1...7)
     /// Nil is the native format; otherwise a template and what it reads.
     @State private var template: TemplateLibrary.Entry?
     @State private var spec = ExtractSpec(range: .sinceLastRun, grouping: .automatic)
@@ -437,6 +442,9 @@ struct PipelineEditor: View {
             kind = .schedule
             count = schedule.count
             unit = schedule.unit
+        case .at(let time):
+            kind = .time
+            timeOfDay = Calendar.current.date(bySettingHour: time.hour, minute: time.minute, second: 0, of: .now) ?? .now
         }
         if name.trimmingCharacters(in: .whitespaces).isEmpty { name = preset.name }
     }
@@ -474,6 +482,11 @@ struct PipelineEditor: View {
         case .schedule:
             if case .every(let old)? = saved, old.count == count, old.unit == unit { return .every(old) }
             return .every(Schedule(count: count, unit: unit, since: Date()))
+        case .time:
+            let c = Calendar.current.dateComponents([.hour, .minute], from: timeOfDay)
+            let days = weekdays.count == 7 || weekdays.isEmpty ? nil : weekdays.sorted()
+            if case .at(let old)? = saved, old.hour == c.hour, old.minute == c.minute, old.weekdays == days { return .at(old) }
+            return .at(TimeOfDay(hour: c.hour ?? 7, minute: c.minute ?? 0, weekdays: days, since: Date()))
         }
     }
 
@@ -601,7 +614,8 @@ struct PipelineEditor: View {
                 Picker("Trigger", selection: $kind) {
                     Text("Manual").tag(TriggerKind.manual)
                     Text("Health changes").tag(TriggerKind.health)
-                    Text("Schedule").tag(TriggerKind.schedule)
+                    Text("Every").tag(TriggerKind.schedule)
+                    Text("At a time").tag(TriggerKind.time)
                 }
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("trigger-kind")
@@ -609,10 +623,26 @@ struct PipelineEditor: View {
                     Stepper("Every \(count)", value: $count, in: 1...999)
                         .accessibilityIdentifier("schedule-count")
                     Picker("Unit", selection: $unit) {
+                        Text("Seconds").tag(Schedule.Unit.seconds)
                         Text("Minutes").tag(Schedule.Unit.minutes)
                         Text("Hours").tag(Schedule.Unit.hours)
                         Text("Days").tag(Schedule.Unit.days)
                         Text("Weeks").tag(Schedule.Unit.weeks)
+                    }
+                }
+                if kind == .time {
+                    DatePicker("Time", selection: $timeOfDay, displayedComponents: .hourAndMinute)
+                        .accessibilityIdentifier("schedule-time")
+                    HStack {
+                        ForEach(Calendar.current.veryShortWeekdaySymbols.indices, id: \.self) { i in
+                            let day = i + 1
+                            Button(Calendar.current.veryShortWeekdaySymbols[i]) {
+                                if weekdays.contains(day) { weekdays.remove(day) } else { weekdays.insert(day) }
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(weekdays.contains(day) ? .accentColor : .secondary)
+                            .frame(maxWidth: .infinity)
+                        }
                     }
                 }
             } header: {
@@ -671,6 +701,10 @@ struct PipelineEditor: View {
                     kind = .schedule
                     count = schedule.count
                     unit = schedule.unit
+                case .at(let time):
+                    kind = .time
+                    timeOfDay = Calendar.current.date(bySettingHour: time.hour, minute: time.minute, second: 0, of: .now) ?? .now
+                    weekdays = Set(time.weekdays ?? Array(1...7))
                 default: kind = .manual
                 }
             }
@@ -689,7 +723,9 @@ struct PipelineEditor: View {
             return "Runs only when you tap Run."
         case .health:
             return "Runs when Health records new data, each morning, and when you open the app, if Background App Refresh is on. iOS keeps Health data locked while your iPhone is locked, so changes overnight are sent after you first unlock it."
-        case .schedule:
+        case .schedule where unit == .seconds && count < 60:
+            return "Runs only while the app is open. iOS has no background work this often."
+        case .schedule, .time:
             return "Runs as soon as it can once due. iOS decides when background work happens and keeps Health data locked while your iPhone is locked, so a run can come later than its time."
         }
     }
@@ -743,6 +779,12 @@ extension PipelineTrigger {
         case .every(let schedule):
             let unit = String(describing: schedule.unit)
             return schedule.count == 1 ? "Every \(unit.dropLast())" : "Every \(schedule.count) \(unit)"
+        case .at(let time):
+            let date = Calendar.current.date(bySettingHour: time.hour, minute: time.minute, second: 0, of: .now) ?? .now
+            let clock = date.formatted(date: .omitted, time: .shortened)
+            guard let days = time.weekdays else { return "Daily at \(clock)" }
+            let names = days.map { Calendar.current.shortWeekdaySymbols[$0 - 1] }.joined(separator: ", ")
+            return "\(names) at \(clock)"
         }
     }
 }

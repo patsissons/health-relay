@@ -95,6 +95,11 @@ public struct TemplateError: Error, Equatable, CustomStringConvertible, Sendable
     public var line: Int?
     public var column: Int?
 
+    /// The run's time was up: nothing wrong with the template.
+    static let outOfTime = TemplateError(message: "The template ran out of time.")
+
+    public var isOutOfTime: Bool { message == Self.outOfTime.message }
+
     public init(message: String, line: Int? = nil, column: Int? = nil) {
         self.message = message
         self.line = line

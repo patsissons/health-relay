@@ -22,6 +22,14 @@ Triggers:
 - **When Health changes**: the triggers under [When to sync](#when-to-sync).
 - **A schedule**: every N minutes, hours, days or weeks after its last run.
 
+- **At a time**: a time of day, on chosen days. A time the clocks skip runs just after it.
+
+A schedule of under a minute runs only while the app is open, since iOS has no background work
+that often. A scheduled template pipeline also asks iOS for its longer processing time, because
+writing output can take more than a refresh allows. Parts of 1 MB or more upload with iOS's
+background transfer service, so they keep going once the app is suspended. The answer is saved, so
+the next run acts on it instead of sending the part again.
+
 A pipeline's id is its destination's, so a token, queue and log saved before
 pipelines existed are its own. State saved before triggers existed needs no
 rewriting: a pipeline with no saved trigger is *when Health changes* if the old
@@ -98,6 +106,16 @@ screen, replaced by the next run, and "delivered" means ready to share. A range 
 run** asks for dates when Run is tapped, so it needs a manual trigger.
 
 Each run of a template pipeline is recorded with its rows, size and file count, in **Run history**.
+
+## Notifications and activity
+
+A pipeline can notify when it fails, when it finishes, and, if scheduled, a few minutes after it's
+due if it hasn't run: iOS can't promise a time, so the reminder is the honest backstop. Notifications
+never hold a health value.
+
+**Settings › Activity** lists what the app did and when. A diagnostics file zips that with each
+pipeline's settings, for a bug report. It leaves out health values, tokens, header values, URL paths,
+pipeline names and template text.
 
 ## Delivering a template's output
 

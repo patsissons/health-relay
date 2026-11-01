@@ -8,8 +8,11 @@ public struct TemplateLimits: Sendable {
     /// Rows a filter like `sort` may load into memory.
     public var materializedRows: Int
     public var deadline: Date?
+    /// Asked at each page: whether the run has been told to stop.
+    public var stop: (@Sendable () async -> Bool)?
 
-    public init(outputBytes: Int = 4 << 30, loopRows: Int = 200_000_000, materializedRows: Int = 500_000, deadline: Date? = nil) {
+    public init(outputBytes: Int = 4 << 30, loopRows: Int = 200_000_000, materializedRows: Int = 500_000, deadline: Date? = nil, stop: (@Sendable () async -> Bool)? = nil) {
+        self.stop = stop
         self.outputBytes = outputBytes
         self.loopRows = loopRows
         self.materializedRows = materializedRows
@@ -171,7 +174,7 @@ final class TemplateRenderer {
             let reader = list.make()
             var first = true
             while let page = try await reader.next() {
-                try checkTime()
+                try await checkTime()
                 for row in page {
                     if !first { try emit(",") }
                     first = false
@@ -285,7 +288,7 @@ final class TemplateRenderer {
         var columns: [String]?
         var deep = false
         while let page = try await reader.next() {
-            try checkTime()
+            try await checkTime()
             for row in page {
                 try countRow()
                 number += 1
@@ -467,15 +470,14 @@ final class TemplateRenderer {
             throw TemplateError(message: "Loops passed their limit of \(limits.loopRows) rows.")
         }
         if rows & 0x3FF == 0, let deadline = limits.deadline, Date() > deadline {
-            throw TemplateError(message: "The template ran out of time.")
+            throw TemplateError.outOfTime
         }
     }
 
-    private func checkTime() throws {
+    private func checkTime() async throws {
         try Task.checkCancellation()
-        if let deadline = limits.deadline, Date() > deadline {
-            throw TemplateError(message: "The template ran out of time.")
-        }
+        if let deadline = limits.deadline, Date() > deadline { throw TemplateError.outOfTime }
+        if let stop = limits.stop, await stop() { throw TemplateError.outOfTime }
     }
 
     private func runLoop(name: String, collection: TemplateExpr, limit: TemplateExpr?, offset: TemplateExpr?, reversed: Bool, body: TemplateBody, otherwise: TemplateBody?, line: Int) async throws {
@@ -530,7 +532,7 @@ final class TemplateRenderer {
         defer { locals.removeLast(locals.count - depth) }
         let fast = body.isSync && list.plainItems
         outer: while let rows = page {
-            try checkTime()
+            try await checkTime()
             var next: [TemplateValue]?
             var fetchedNext = false
             for (i, item) in rows.enumerated() {

@@ -123,7 +123,7 @@ final class HealthDataRelayUITests: XCTestCase {
         type("pipeline-name", "Hourly")
         type("pipeline-url", "http://127.0.0.1:8787/")
         app.swipeUp()
-        app.buttons["Schedule"].tap()
+        app.buttons["Every"].tap()
         snap("pipeline-schedule")
         app.buttons["save-pipeline"].tap()
         if app.buttons["Not Now"].waitForExistence(timeout: 2) { app.buttons["Not Now"].tap() }
@@ -356,6 +356,32 @@ final class HealthDataRelayUITests: XCTestCase {
         app.buttons["run-history"].tap()
         XCTAssertTrue(text("rows").waitForExistence(timeout: 5))
         snap("run-history")
+    }
+
+    /// A time of day counts down like a schedule, and the activity log and
+    /// diagnostics file show what happened.
+    func testTimeOfDayAndActivity() throws {
+        let add = app.buttons["add-pipeline"]
+        XCTAssertTrue(add.waitForExistence(timeout: 30))
+        add.tap()
+        type("pipeline-name", "Morning")
+        type("pipeline-url", "http://127.0.0.1:8787/")
+        reveal(app.buttons["At a time"])
+        app.buttons["At a time"].tap()
+        snap("pipeline-time-of-day")
+        app.buttons["save-pipeline"].tap()
+        if app.buttons["Not Now"].waitForExistence(timeout: 2) { app.buttons["Not Now"].tap() }
+
+        let countdown = app.staticTexts["next-run"]
+        XCTAssertTrue(countdown.waitForExistence(timeout: 10))
+        XCTAssertTrue(countdown.label.hasPrefix("Next run in"), countdown.label)
+        snap("time-of-day-card")
+
+        tab("Settings")
+        app.buttons["activity"].tap()
+        app.buttons["make-diagnostics"].tap()
+        XCTAssertTrue(app.buttons["share-diagnostics"].waitForExistence(timeout: 5))
+        snap("activity")
     }
 
     func testPhoneNameIsSavedOnLeavingTheField() throws {

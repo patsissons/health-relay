@@ -25,6 +25,8 @@ public struct EngineState: Codable, Sendable {
     public var definitions: [UUID: PipelineDefinition]?
     /// Where each template pipeline has read up to.
     public var cursors: [UUID: ExtractCursor]?
+    /// When to notify about each pipeline.
+    public var notices: [UUID: PipelineNotices]?
 
     public init() {}
 }

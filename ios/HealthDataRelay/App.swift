@@ -1,8 +1,40 @@
+import BackgroundTasks
 import HealthDataRelayKit
 import SwiftUI
 
+/// What SwiftUI's app lifecycle doesn't cover: long background processing has
+/// to be registered at launch, and background uploads report here.
+final class AppDelegate: NSObject, UIApplicationDelegate {
+    @MainActor static var model: AppModel?
+
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: AppModel.processingTask, using: nil) { task in
+            let work = Task { @MainActor in
+                await AppDelegate.model?.process()
+                task.setTaskCompleted(success: true)
+            }
+            task.expirationHandler = { work.cancel() }
+        }
+        return true
+    }
+
+    func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
+        let done = UncheckedCompletion(completionHandler)
+        MainActor.assumeIsolated {
+            AppDelegate.model?.uploader.handleBackgroundEvents { done.call() }
+        }
+    }
+
+    private struct UncheckedCompletion: @unchecked Sendable {
+        let body: () -> Void
+        init(_ body: @escaping () -> Void) { self.body = body }
+        func call() { DispatchQueue.main.async { body() } }
+    }
+}
+
 @main
 struct HealthDataRelayApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var model = AppModel()
     @Environment(\.scenePhase) private var phase
 
@@ -25,6 +57,7 @@ struct HealthDataRelayApp: App {
                 #endif
             }
             .environment(model)
+            .onAppear { AppDelegate.model = model }
             .onOpenURL { url in Task { await model.open(url) } }
             .sheet(item: Binding(get: { model.setup }, set: { model.setup = $0 })) { setup in
                 NavigationStack { PipelineEditor(existing: setup.existing, setup: setup.link) }

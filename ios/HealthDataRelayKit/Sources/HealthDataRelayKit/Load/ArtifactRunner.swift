@@ -44,6 +44,10 @@ struct ArtifactRunner: Sendable {
                 await progress(.rendering)
                 guard try await produce(id: id, definition: definition, template: template, destinationTemplate: destinationTemplate, lane: lane, cursor: cursor, answer: answer, pushData: pushData, access: access) else { return .done }
                 produced = true
+            } catch let error as TemplateError where error.isOutOfTime {
+                return .stopped
+            } catch is CancellationError {
+                return .stopped
             } catch let error as TemplateError {
                 // A template doesn't get better by being retried.
                 let message = error.description

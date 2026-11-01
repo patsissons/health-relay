@@ -38,7 +38,7 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSHealthShareUsageDescription: Health Data Relay reads your Health data to send each day to the destinations you add. Nothing is sent anywhere else.
         UIBackgroundModes: [fetch, processing]
-        BGTaskSchedulerPermittedIdentifiers: [com.patsissons.healthdatarelay.refresh]
+        BGTaskSchedulerPermittedIdentifiers: [com.patsissons.healthdatarelay.refresh, com.patsissons.healthdatarelay.processing]
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         NSLocalNetworkUsageDescription: Health Data Relay sends your Health data to destinations you add on your own network.

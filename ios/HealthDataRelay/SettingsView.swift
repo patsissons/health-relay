@@ -40,6 +40,8 @@ struct SettingsView: View {
                 Section {
                     NavigationLink("Data by type") { TypesView() }
                     NavigationLink("Values by day") { DayValuesView() }
+                    NavigationLink("Activity") { ActivityView() }
+                        .accessibilityIdentifier("activity")
                 } footer: {
                     Text("iOS keeps Health data locked while your iPhone is locked, so nothing can be read until you unlock it.")
                 }

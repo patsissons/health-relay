@@ -1,5 +1,6 @@
 import BackgroundTasks
 import HealthKit
+import UserNotifications
 import HealthDataRelayKit
 import Observation
 import SwiftUI
@@ -9,6 +10,7 @@ import SwiftUI
 @MainActor @Observable
 final class AppModel {
     static let refreshTask = "com.patsissons.healthdatarelay.refresh"
+    static let processingTask = "com.patsissons.healthdatarelay.processing"
 
     let engine: Engine
     let health: LiveHealthStore
@@ -23,6 +25,7 @@ final class AppModel {
     private var watcher: Task<Void, Never>?
     let library: TemplateLibrary
     private let files: FileStore
+    let uploader: BackgroundUploader
     private(set) var customTemplates: [CustomTemplate] = []
     /// A setup link waiting for the user to review and save.
     var setup: PendingSetup?
@@ -47,12 +50,17 @@ final class AppModel {
         // Read now, not from the engine later: a background wake needs its
         // observers registered during launch.
         let plan = files.load().backgroundPlan
+        files.trimActivity()
+        let uploader = BackgroundUploader(folder: files.root.appendingPathComponent("uploads", isDirectory: true))
+        self.uploader = uploader
         engine = Engine(.init(
             store: health,
             files: files,
             tokens: KeychainTokenStore(),
             device: { Device(name: $0, model: model, os: os, app: app) },
-            queries: health))
+            queries: health,
+            notify: { AppModel.post($0) },
+            uploader: uploader))
         let engine = engine
         Task { [weak self] in
             await engine.observe { snapshot in
@@ -239,6 +247,56 @@ final class AppModel {
         await applyBackgroundPlan()
     }
 
+    /// iOS's longer background time, for output a refresh can't finish.
+    func process() async {
+        await engine.sync(.processing)
+        await applyBackgroundPlan()
+    }
+
+    // MARK: Notifications
+
+    private nonisolated static func post(_ notice: PipelineNotice) {
+        let content = UNMutableNotificationContent()
+        content.title = notice.title
+        content.body = notice.body
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+    }
+
+    func notices(for id: UUID) async -> PipelineNotices { await engine.notices(for: id) }
+
+    /// Saves when to notify, asking iOS for permission when it first matters.
+    func setNotices(_ id: UUID, _ notices: PipelineNotices) async {
+        if notices.isOn { _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) }
+        await engine.setNotices(id, notices)
+        await applyBackgroundPlan()
+    }
+
+    /// Reminders for what's scheduled, replacing the last set. Each one lands
+    /// a little after its time, and running first moves it to the next time.
+    private func scheduleReminders() async {
+        let center = UNUserNotificationCenter.current()
+        let pending = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix("reminder-") }
+        center.removePendingNotificationRequests(withIdentifiers: pending)
+        for reminder in await engine.reminders {
+            let content = UNMutableNotificationContent()
+            content.title = reminder.name
+            content.body = "It's due. Open the app so it can run."
+            let wait = max(60, reminder.at.timeIntervalSinceNow + 300)
+            let request = UNNotificationRequest(identifier: "reminder-\(reminder.id.uuidString)", content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: wait, repeats: false))
+            try? await center.add(request)
+        }
+    }
+
+    // MARK: Activity
+
+    func activity() -> [ActivityEntry] { files.activity(limit: 500) }
+
+    func makeDiagnostics() -> URL? {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("diagnostics", isDirectory: true)
+        let info = Diagnostics.AppInfo(app: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "", os: UIDevice.current.systemVersion, model: AppModel.deviceModel)
+        return try? Diagnostics.write(files: files, info: info, now: .now, to: folder)
+    }
+
     /// Asks iOS for what the triggers need: Health's change notifications,
     /// and a refresh at the soonest due time or around 06:30.
     func applyBackgroundPlan() async {
@@ -251,7 +309,8 @@ final class AppModel {
                 health.stopObserving()
             }
         }
-        var earliest = plan.nextRun
+        await scheduleReminders()
+        var earliest = plan.backgroundRun
         if plan.dailyCatchUp {
             let calendar = Calendar.current
             let now = Date()
@@ -261,11 +320,20 @@ final class AppModel {
         }
         guard let earliest else {
             BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: AppModel.refreshTask)
+            BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: AppModel.processingTask)
             return
         }
         let request = BGAppRefreshTaskRequest(identifier: AppModel.refreshTask)
         request.earliestBeginDate = earliest
         try? BGTaskScheduler.shared.submit(request)
+        if plan.wantsLongRun {
+            let long = BGProcessingTaskRequest(identifier: AppModel.processingTask)
+            long.earliestBeginDate = earliest
+            long.requiresNetworkConnectivity = true
+            try? BGTaskScheduler.shared.submit(long)
+        } else {
+            BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: AppModel.processingTask)
+        }
     }
 
     // MARK: Pipelines

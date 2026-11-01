@@ -7,6 +7,14 @@ public enum LoadTarget: Codable, Sendable, Equatable {
     /// Written to a file for the user to send on with the share sheet.
     case share
 
+    /// Its kind, for a diagnostics file: nothing identifying.
+    public var kindName: String {
+        switch self {
+        case .web: "web"
+        case .share: "share"
+        }
+    }
+
     /// What the screens call its destination.
     public var summary: String {
         switch self {
@@ -108,11 +116,18 @@ public struct WebTransport: ArtifactTransport {
     public let target: WebTarget
     public let context: TransportContext
     public let session: URLSession
+    /// Takes parts of `backgroundBytes` or more, so they outlast the app.
+    public let uploader: BackgroundUploader?
+    public let waitForUpload: Duration
 
-    public init(target: WebTarget, context: TransportContext, session: URLSession = .shared) {
+    public static let backgroundBytes = 1 << 20
+
+    public init(target: WebTarget, context: TransportContext, session: URLSession = .shared, uploader: BackgroundUploader? = nil, waitForUpload: Duration = .seconds(15)) {
         self.target = target
         self.context = context
         self.session = session
+        self.uploader = uploader
+        self.waitForUpload = waitForUpload
     }
 
     func request(part: ArtifactPart, contentType: String) -> URLRequest? {
@@ -162,7 +177,8 @@ public struct WebTransport: ArtifactTransport {
         var upload = file
         var contentType = part.contentType
         var cleanup: URL?
-        defer { if let cleanup { try? FileManager.default.removeItem(at: cleanup) } }
+        let background = uploader != nil && part.bytes >= Self.backgroundBytes
+        defer { if let cleanup, !background { try? FileManager.default.removeItem(at: cleanup) } }
         if case .multipart(let field) = target.body {
             // The same boundary on every attempt, since a retry sends the same bytes.
             let boundary = "hdr-\(artifact.id.uuidString)"
@@ -178,6 +194,18 @@ public struct WebTransport: ArtifactTransport {
         }
         guard let request = request(part: part, contentType: contentType) else {
             return Delivery(status: nil, verdict: .rejected, message: "That isn't an http or https URL: \(part.destination ?? target.url)")
+        }
+        if background, let uploader {
+            let key = "\(artifact.id.uuidString)-\(part.file)"
+            guard let outcome = await uploader.upload(request, file: upload, key: key, wait: waitForUpload) else {
+                return Delivery(status: nil, verdict: .retry, message: "Still uploading in the background")
+            }
+            uploader.clear(key: key)
+            if let cleanup { try? FileManager.default.removeItem(at: cleanup) }
+            guard let status = outcome.status else {
+                return Delivery(status: nil, verdict: .retry, message: outcome.error ?? "The upload stopped")
+            }
+            return Delivery(status: status, verdict: Delivery.verdict(for: status), message: Delivery.message(status: status, body: outcome.body))
         }
         do {
             let (data, response) = try await session.upload(for: request, fromFile: upload)
