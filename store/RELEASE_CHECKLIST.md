@@ -12,12 +12,11 @@ holder.
       entitlements at build time).
 - [x] App record created, which claims the name. Status: Prepare for Submission.
 
-## Before the first upload
-
-- [ ] Move the phone to the new bundle id. iOS treats it as a new app, so it
-      needs a new Health grant, a new token and one 30-day resend.
-- [ ] Upload one internal TestFlight build. **This locks the bundle id for
-      good.** No App Review is involved.
+- [x] Phone moved to the new bundle id.
+- [x] Build 0.1 (3) uploaded with `ios/scripts/testflight.sh`, for internal
+      TestFlight only. **The bundle id is now locked.** App Store validation
+      requires `NSHealthUpdateUsageDescription` even though Release never writes
+      to Health, so Release carries a string saying so.
 
 ## Code (M2 to M5)
 

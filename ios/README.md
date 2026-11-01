@@ -101,6 +101,17 @@ screenshots come from it.
 A local receiver on the Mac works from the phone too: `http://<Mac's LAN
 IP>:8787` (the app allows plain HTTP to local network addresses only).
 
+## TestFlight
+
+```sh
+scripts/testflight.sh
+```
+
+It adds one to the build number, archives, checks an App Store export (bundle
+id, entitlements, no Seed tab) and uploads through the Apple account signed
+into Xcode. Commit `project.yml` afterwards. What's left before App Review is in
+[`../store/RELEASE_CHECKLIST.md`](../store/RELEASE_CHECKLIST.md).
+
 ## Simulator data
 
 The simulator has no Health data. Debug builds on the simulator have a

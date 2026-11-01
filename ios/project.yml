@@ -14,7 +14,7 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "0.1"
-    CURRENT_PROJECT_VERSION: "1"
+    CURRENT_PROJECT_VERSION: "3"
 packages:
   HealthDataRelayKit:
     path: HealthDataRelayKit
@@ -64,6 +64,9 @@ targets:
       configs:
         Debug:
           INFOPLIST_KEY_NSHealthUpdateUsageDescription: Debug builds write synthetic samples so the app can be tried on a simulator.
+        # App Store validation requires the key for HealthKit apps. Release asks for no write access, so iOS never shows it.
+        Release:
+          INFOPLIST_KEY_NSHealthUpdateUsageDescription: Health Data Relay does not add to or change your Health data. It only reads it.
   HealthDataRelayUITests:
     type: bundle.ui-testing
     platform: iOS
