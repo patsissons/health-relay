@@ -193,13 +193,18 @@ public struct RangePlanner: Sendable {
         case .previousDays(let n):
             return [DateInterval(start: today.adding(-max(1, n)).start(in: calendar), end: today.start(in: calendar))]
         case .lastDays(let n):
-            return [DateInterval(start: today.adding(1 - max(1, n)).start(in: calendar), end: now)]
+            return [lastDays(n, now: now)]
         case .fixed(let interval):
             return [interval]
         case .askAtRun:
             guard let answer else { throw Failure.needsAnswer }
             return [answer]
         }
+    }
+
+    /// The last `n` days including today so far.
+    public func lastDays(_ n: Int, now: Date) -> DateInterval {
+        DateInterval(start: Day(now, calendar: calendar).adding(1 - max(1, n)).start(in: calendar), end: now)
     }
 
     /// The cursor after a run that covered up to `now`. A run that didn't

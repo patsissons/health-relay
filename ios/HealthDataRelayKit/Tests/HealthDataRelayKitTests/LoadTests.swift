@@ -96,6 +96,27 @@ final class Box<T>: @unchecked Sendable {
         #expect(p.endpoint == nil)
     }
 
+    @Test func goingBackToTheNativePushForgetsTheTemplate() async throws {
+        queries.add("step_count", at: T.date("2026-10-25 09:00:00 -0700"), 10)
+        let engine = engine(transport: RecordingTransport())
+        var d = await engine.add(Destination(name: "Web", kind: .target(target)), token: nil, definition: definition(ExtractSpec(range: .sinceLastRun, grouping: .days)))
+        await engine.run(d.id)
+
+        // An edit that keeps a target leaves the template and its place alone.
+        d.name = "Renamed"
+        await engine.update(d, token: nil)
+        var p = await engine.snapshot.pipelines[0]
+        #expect(p.definition != nil)
+        #expect(await engine.state.cursors?[d.id]?.lastEnd == now)
+
+        d.kind = .http(HTTPEndpoint(url: URL(string: "https://example.com/push")!))
+        await engine.update(d, token: nil)
+        p = await engine.snapshot.pipelines[0]
+        #expect(p.definition == nil)
+        #expect(p.transform == .healthDataRelayPush)
+        #expect(await engine.state.cursors?[d.id] == nil)
+    }
+
     @Test func aRetrySendsTheSameBytesEvenAfterNewDataArrives() async throws {
         queries.add("step_count", at: T.date("2026-10-25 09:00:00 -0700"), 10)
         let transport = RecordingTransport(answers: [.retry, .accepted])

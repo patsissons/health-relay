@@ -53,11 +53,13 @@ struct SettingsView: View {
                     Text("Lets tools on your network ask about your Health data while this app is open.")
                 }
 
-                Section {
-                    NavigationLink("Connected accounts") { AccountsView() }
-                        .accessibilityIdentifier("connected-accounts")
-                } footer: {
-                    Text("Cloud storage your pipelines can save to.")
+                if AppModel.hasCloudSignIn {
+                    Section {
+                        NavigationLink("Connected accounts") { AccountsView() }
+                            .accessibilityIdentifier("connected-accounts")
+                    } footer: {
+                        Text("Cloud storage your pipelines can save to.")
+                    }
                 }
 
                 Section {

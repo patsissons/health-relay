@@ -370,14 +370,18 @@ struct PipelineDetail: View {
 
                 PipelineNoticesSection(pipeline: pipeline)
 
-                Section {
-                    Toggle("Paused", isOn: Binding(
-                        get: { pipeline.destination.paused },
-                        set: { paused in Task { await model.setPaused(id, paused) } }))
-                } footer: {
-                    Text(pipeline.definition?.usesDirtyDays ?? true
-                         ? "A paused pipeline keeps collecting days to send and catches up when resumed."
-                         : "A paused pipeline doesn't run until resumed.")
+                // A manual pipeline has nothing to pause, but one already paused can still resume.
+                if pipeline.trigger != .manual || pipeline.destination.paused {
+                    Section {
+                        Toggle("Paused", isOn: Binding(
+                            get: { pipeline.destination.paused },
+                            set: { paused in Task { await model.setPaused(id, paused) } }))
+                            .accessibilityIdentifier("pipeline-paused")
+                    } footer: {
+                        Text(pipeline.definition?.usesDirtyDays ?? true
+                             ? "A paused pipeline keeps collecting days to send and catches up when resumed."
+                             : "A paused pipeline doesn't run until resumed.")
+                    }
                 }
 
                 Section {
@@ -527,6 +531,20 @@ struct PipelineEditor: View {
 
     private var choices: [TemplateLibrary.Entry] { model.library.entries() }
 
+    /// A template's name in the Transform list, told apart from the native format it shares a name with.
+    private func transformTitle(_ entry: TemplateLibrary.Entry) -> String {
+        entry.ref == .builtIn(BuiltInTemplates.healthDataRelay) ? "\(entry.name) (template)" : entry.name
+    }
+
+    /// Whether to offer a cloud service: this build can sign in to it, or this pipeline already saves there.
+    private func offersCloud(_ kind: FileKind, _ provider: ConnectedAccount.Provider) -> Bool {
+        fileKind == kind || AppModel.oauth(provider) != nil
+    }
+
+    private var offersAnyCloud: Bool {
+        offersCloud(.dropbox, .dropbox) || offersCloud(.drive, .google)
+    }
+
     /// Starts from a common job's settings.
     private func apply(_ preset: PipelinePreset) {
         template = choices.first { $0.ref == .builtIn(preset.template) }
@@ -661,10 +679,14 @@ struct PipelineEditor: View {
                     .accessibilityIdentifier("pipeline-name")
                 Picker("Transform", selection: $template) {
                     Text(TransformSpec.healthDataRelayPush.title).tag(TemplateLibrary.Entry?.none)
-                    ForEach(choices) { Text($0.name).tag(TemplateLibrary.Entry?.some($0)) }
+                    ForEach(model.library.transforms(selected: template?.ref)) { Text(transformTitle($0)).tag(TemplateLibrary.Entry?.some($0)) }
                 }
+                // The native format stays first, even when the list opens upward.
+                .menuOrder(.fixed)
                 .accessibilityIdentifier("transform")
                 .onChange(of: template) { _, entry in
+                    // The native format only sends to a REST API.
+                    if entry == nil { targetKind = .web }
                     // Start from the sections a template says it uses.
                     guard let entry, let source = model.library.source(entry.ref), let parsed = try? ParsedTemplate(source: source), !parsed.header.data.isEmpty else { return }
                     spec.sections = Set(parsed.header.data)
@@ -679,23 +701,48 @@ struct PipelineEditor: View {
                 ExtractEditor(spec: $spec)
             }
 
-            if template != nil {
-                Section {
-                    Picker("Send to", selection: $targetKind) {
-                        Text("Web").tag(TargetKind.web)
+            Section {
+                Picker("Type", selection: $targetKind) {
+                    Text("REST API").tag(TargetKind.web)
+                    if template != nil {
                         Text("Share sheet").tag(TargetKind.share)
                         Text("MQTT").tag(TargetKind.mqtt)
                         Text("Calendar").tag(TargetKind.calendar)
                         Text("Email").tag(TargetKind.email)
-                        Text("Files or cloud").tag(TargetKind.file)
+                        Text(offersAnyCloud ? "Files or cloud" : "Files").tag(TargetKind.file)
                     }
-                    .accessibilityIdentifier("target-kind")
-                } header: {
-                    Text("Destination")
-                } footer: {
-                    if targetKind == .share {
-                        Text("Writes a file you send on yourself, or a ZIP when there are several.")
+                }
+                .accessibilityIdentifier("target-kind")
+                if template == nil || targetKind == .web {
+                    TextField("https://example.com/push", text: $url)
+                        .keyboardType(.URL)
+                        .textContentType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("pipeline-url")
+                    SecureField("Bearer token (optional)", text: $token)
+                        // Not a password: keeps iOS from offering to save it to Passwords.
+                        .textContentType(.oneTimeCode)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("pipeline-token")
+                    if template != nil {
+                        Picker("Method", selection: $method) {
+                            ForEach(WebTarget.Method.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                        }
+                        Toggle("Send as a file upload", isOn: $multipart)
+                        Toggle("Send automation headers", isOn: $automationHeaders)
                     }
+                }
+            } header: {
+                Text("Destination")
+            } footer: {
+                if template == nil {
+                    Text("Each batch of days is POSTed as JSON, with Authorization: Bearer <token> when a token is set. The token is kept in the Keychain.")
+                } else if targetKind == .web {
+                    Text("Authorization: Bearer <token> is sent when a token is set, and the token is kept in the Keychain. Automation headers name this pipeline, its grouping and range, for receivers that read them.")
+                } else if targetKind == .share {
+                    Text("Writes a file you send on yourself, or a ZIP when there are several.")
                 }
             }
 
@@ -735,13 +782,15 @@ struct PipelineEditor: View {
 
             if template != nil && targetKind == .file {
                 Section {
-                    Picker("Save to", selection: $fileKind) {
-                        Text("A folder").tag(FileKind.folder)
-                        Text("Dropbox").tag(FileKind.dropbox)
-                        Text("Google Drive").tag(FileKind.drive)
+                    if offersAnyCloud {
+                        Picker("Save to", selection: $fileKind) {
+                            Text("A folder").tag(FileKind.folder)
+                            if offersCloud(.dropbox, .dropbox) { Text("Dropbox").tag(FileKind.dropbox) }
+                            if offersCloud(.drive, .google) { Text("Google Drive").tag(FileKind.drive) }
+                        }
+                        .accessibilityIdentifier("file-kind")
+                        .onChange(of: fileKind) { _, _ in cloudAccount = cloudAccounts.first?.id }
                     }
-                    .accessibilityIdentifier("file-kind")
-                    .onChange(of: fileKind) { _, _ in cloudAccount = cloudAccounts.first?.id }
                     if fileKind == .folder {
                         Button(folderBookmark == nil ? "Choose a folder" : "Folder: \(folderName)") { choosingFolder = true }
                             .accessibilityIdentifier("choose-folder")
@@ -763,7 +812,9 @@ struct PipelineEditor: View {
                     }
                     Toggle("Replace a file of the same name", isOn: $overwrite)
                 } footer: {
-                    Text("Each part is one file, named by the template. An interrupted cloud upload carries on where it stopped.")
+                    Text(offersAnyCloud
+                         ? "Each part is one file, named by the template. An interrupted cloud upload carries on where it stopped."
+                         : "Each part is one file, named by the template.")
                 }
                 .task { await model.reloadAccounts() }
                 .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder]) { result in
@@ -861,34 +912,6 @@ struct PipelineEditor: View {
             }
 
             if template == nil || targetKind == .web {
-            Section {
-                TextField("https://example.com/push", text: $url)
-                    .keyboardType(.URL)
-                    .textContentType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .accessibilityIdentifier("pipeline-url")
-                SecureField("Bearer token (optional)", text: $token)
-                    // Not a password: keeps iOS from offering to save it to Passwords.
-                    .textContentType(.oneTimeCode)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .accessibilityIdentifier("pipeline-token")
-                if template != nil {
-                    Picker("Method", selection: $method) {
-                        ForEach(WebTarget.Method.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                    }
-                    Toggle("Send as a file upload", isOn: $multipart)
-                    Toggle("Send automation headers", isOn: $automationHeaders)
-                }
-            } header: {
-                Text("Destination")
-            } footer: {
-                Text(template == nil
-                     ? "Each batch of days is POSTed as JSON, with Authorization: Bearer <token> when a token is set. The token is kept in the Keychain."
-                     : "Authorization: Bearer <token> is sent when a token is set, and the token is kept in the Keychain. Automation headers name this pipeline, its grouping and range, for receivers that read them.")
-            }
-
             Section {
                 ForEach(headers.indices, id: \.self) { i in
                     HStack {

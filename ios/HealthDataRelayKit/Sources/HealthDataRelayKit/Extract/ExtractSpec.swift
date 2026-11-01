@@ -153,6 +153,24 @@ public enum RangeSpec: Codable, Sendable, Equatable {
     case askAtRun
 }
 
+/// A ready-made answer when someone is choosing dates by hand.
+public enum DateRangePreset: CaseIterable, Sendable {
+    case last24Hours, last7Days, last30Days, last90Days, last365Days
+
+    /// The time it covers. Days are whole, like `RangeSpec.lastDays`, so a
+    /// daily grouping doesn't start with part of a day.
+    public func interval(now: Date, calendar: Calendar) -> DateInterval {
+        let planner = RangePlanner(calendar: calendar)
+        switch self {
+        case .last24Hours: return DateInterval(start: now.addingTimeInterval(-24 * 3600), end: now)
+        case .last7Days: return planner.lastDays(7, now: now)
+        case .last30Days: return planner.lastDays(30, now: now)
+        case .last90Days: return planner.lastDays(90, now: now)
+        case .last365Days: return planner.lastDays(365, now: now)
+        }
+    }
+}
+
 /// What's known about a pipeline's progress, saved between runs.
 public struct ExtractCursor: Codable, Sendable, Equatable {
     /// The end of the last run's range; the next since-last-run starts here.

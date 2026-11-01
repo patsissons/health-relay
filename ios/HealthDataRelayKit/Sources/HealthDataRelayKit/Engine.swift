@@ -369,6 +369,10 @@ public actor Engine {
             // A changed range starts over: its saved position meant something else.
             if old?.extract.range != definition.extract.range { state.cursors?[destination.id] = nil }
             if !definition.usesDirtyDays { state.lanes[destination.id]?.dirty = DirtySet() }
+        } else if case .http = destination.kind {
+            // Back to the native push: a template's settings no longer apply.
+            state.definitions?[destination.id] = nil
+            state.cursors?[destination.id] = nil
         }
         env.tokens.setToken(token, for: destination.id)
         state.lanes[destination.id]?.attention = nil

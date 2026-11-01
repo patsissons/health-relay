@@ -380,6 +380,11 @@ final class AppModel {
         }
     }
 
+    /// Whether this build can sign in to any cloud service at all.
+    nonisolated static var hasCloudSignIn: Bool {
+        ConnectedAccount.Provider.allCases.contains { oauth($0) != nil }
+    }
+
     func connect(_ provider: ConnectedAccount.Provider) async throws {
         guard let config = AppModel.oauth(provider) else { return }
         let tokens = try await OAuthSignIn.run(config)

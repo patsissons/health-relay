@@ -548,6 +548,17 @@ final class NullSink: OutputSink {
         #expect(library.custom().isEmpty)
     }
 
+    @Test func theNativeTwinIsOnlyATransformForOneUsingIt() throws {
+        let twin = TemplateRef.builtIn(BuiltInTemplates.healthDataRelay)
+        let id = try library.save(good)
+        #expect(library.entries().contains { $0.ref == twin })
+        #expect(!library.transforms().contains { $0.ref == twin })
+        #expect(!library.transforms(selected: .builtIn(BuiltInTemplates.metricsCSV)).contains { $0.ref == twin })
+        #expect(library.transforms(selected: twin).contains { $0.ref == twin })
+        #expect(library.transforms().contains { $0.ref == .custom(id) })
+        #expect(library.transforms().first?.ref == .builtIn(BuiltInTemplates.metricsJSONv2))
+    }
+
     @Test func aBadEditKeepsTheOldTemplate() throws {
         let id = try library.save(good)
         #expect(throws: TemplateError.self) { try library.save("---\nname: Mine\n---\n{{ oops", id: id) }

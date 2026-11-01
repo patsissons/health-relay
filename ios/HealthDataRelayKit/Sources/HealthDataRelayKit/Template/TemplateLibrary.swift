@@ -71,6 +71,12 @@ public struct TemplateLibrary: Sendable {
         return builtIn + own
     }
 
+    /// What a pipeline can use besides the native push. The native format's
+    /// twin is only there to copy, so it's listed just for one already using it.
+    public func transforms(selected: TemplateRef? = nil) -> [Entry] {
+        entries().filter { $0.ref != .builtIn(BuiltInTemplates.healthDataRelay) || $0.ref == selected }
+    }
+
     public func source(_ ref: TemplateRef) -> String? {
         switch ref {
         case .builtIn(let id): return BuiltInTemplates.source(id)

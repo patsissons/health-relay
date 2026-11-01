@@ -118,6 +118,10 @@ final class HealthDataRelayUITests: XCTestCase {
 
     /// A scheduled card counts down, second by second, instead of offering Run.
     func testScheduledPipelineCountsDown() throws {
+        // Without the Debug-only Seed tab: its screenshot is on the site.
+        app.terminate()
+        app.launchArguments = ["-hideSeed"]
+        app.launch()
         let add = app.buttons["add-pipeline"]
         XCTAssertTrue(add.waitForExistence(timeout: 30))
         add.tap()
@@ -312,6 +316,20 @@ final class HealthDataRelayUITests: XCTestCase {
 
         tab("Pipelines")
         app.buttons["export"].tap()
+
+        // A preset hides the dates; Custom brings them back.
+        let range = app.buttons["export-range"]
+        XCTAssertTrue(range.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.datePickers["range-from"].exists)
+        range.tap()
+        app.buttons["Custom"].tap()
+        XCTAssertTrue(app.datePickers["range-from"].waitForExistence(timeout: 5))
+        snap("export-custom-range")
+        range.tap()
+        app.buttons["Last 30 days"].tap()
+        XCTAssertTrue(app.datePickers["range-from"].waitForNonExistence(timeout: 5))
+        snap("export-preset-range")
+
         let run = app.buttons["export-run"]
         reveal(run)
         run.tap()
@@ -467,12 +485,111 @@ final class HealthDataRelayUITests: XCTestCase {
         snap("email-pipeline-ready")
     }
 
-    /// With no OAuth client in the build, a cloud service says so rather than failing.
-    func testCloudAccountsNeedSettingUp() throws {
+    /// With no OAuth client in the build, cloud services aren't offered anywhere.
+    func testCloudAccountsHiddenWithoutSetup() throws {
         tab("Settings")
-        app.buttons["connected-accounts"].tap()
-        XCTAssertTrue(text("Not set up in this build").waitForExistence(timeout: 5))
-        snap("connected-accounts")
+        XCTAssertTrue(app.buttons["server"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["connected-accounts"].exists)
+        snap("settings-no-accounts")
+
+        tab("Pipelines")
+        app.buttons["add-pipeline"].tap()
+        app.buttons["transform"].tap()
+        app.buttons["Metrics CSV"].tap()
+        reveal(app.buttons["target-kind"])
+        app.buttons["target-kind"].tap()
+        XCTAssertFalse(app.buttons["Files or cloud"].exists)
+        app.buttons["Files"].tap()
+        let choose = app.buttons["choose-folder"]
+        reveal(choose)
+        XCTAssertTrue(choose.exists)
+        XCTAssertFalse(app.buttons["file-kind"].exists)
+        snap("files-folder-only")
+    }
+
+    /// The native format is one row, first, and only sends to a REST API.
+    /// A template offers more types, and going back to native resets the type.
+    func testTransformListAndDestinationType() throws {
+        let add = app.buttons["add-pipeline"]
+        XCTAssertTrue(add.waitForExistence(timeout: 30))
+        add.tap()
+        let transform = app.buttons["transform"]
+        let kind = app.buttons["target-kind"]
+        XCTAssertTrue(kind.waitForExistence(timeout: 5))
+        kind.tap()
+        XCTAssertTrue(app.buttons["REST API"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Share sheet"].exists)
+        snap("destination-type-native")
+        app.buttons["REST API"].tap()
+
+        transform.tap()
+        let csv = app.buttons["Metrics CSV"]
+        XCTAssertTrue(csv.waitForExistence(timeout: 5))
+        func nativeRows() -> [XCUIElement] {
+            app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Health Data Relay'")).allElementsBoundByIndex.filter { $0.identifier != "transform" }
+        }
+        XCTAssertEqual(nativeRows().count, 1)
+        XCTAssertLessThan(nativeRows()[0].frame.minY, app.buttons["Metrics JSON v2"].frame.minY)
+        snap("transform-list")
+        csv.tap()
+
+        reveal(kind)
+        kind.tap()
+        XCTAssertTrue(app.buttons["Share sheet"].waitForExistence(timeout: 5))
+        app.buttons["Share sheet"].tap()
+        XCTAssertFalse(app.textFields["pipeline-url"].exists)
+
+        reveal(transform)
+        transform.tap()
+        XCTAssertTrue(app.buttons["Metrics JSON v2"].waitForExistence(timeout: 5))
+        nativeRows()[0].tap()
+        XCTAssertTrue(app.textFields["pipeline-url"].waitForExistence(timeout: 5))
+    }
+
+    /// Paused only shows where there's something to pause, or something to
+    /// resume: a paused pipeline switched to manual can still come back.
+    func testPausedIsForPipelinesThatRunThemselves() throws {
+        let add = app.buttons["add-pipeline"]
+        XCTAssertTrue(add.waitForExistence(timeout: 30))
+        add.tap()
+        type("pipeline-name", "Pausing")
+        type("pipeline-url", "http://127.0.0.1:8787/")
+        app.buttons["save-pipeline"].tap()
+        if app.buttons["Not Now"].waitForExistence(timeout: 2) { app.buttons["Not Now"].tap() }
+        XCTAssertTrue(app.buttons["run-Pausing"].waitForExistence(timeout: 10))
+
+        let card = app.staticTexts["Pausing"].firstMatch
+        let edit = app.buttons["edit-pipeline"]
+        for _ in 0..<3 where !edit.exists {
+            card.tap()
+            _ = edit.waitForExistence(timeout: 5)
+        }
+        let paused = app.switches["pipeline-paused"]
+        reveal(app.buttons["Remove pipeline"])
+        XCTAssertFalse(paused.exists)
+
+        func change(to trigger: String) {
+            let edit = app.buttons["edit-pipeline"]
+            reveal(edit)
+            edit.tap()
+            XCTAssertTrue(app.buttons["save-pipeline"].waitForExistence(timeout: 5))
+            reveal(app.buttons[trigger])
+            app.buttons[trigger].tap()
+            app.buttons["save-pipeline"].tap()
+            XCTAssertTrue(app.buttons["save-pipeline"].waitForNonExistence(timeout: 5))
+        }
+
+        change(to: "Health changes")
+        reveal(paused)
+        XCTAssertTrue(paused.exists)
+        paused.switches.firstMatch.tap()
+        snap("pipeline-paused")
+
+        change(to: "Manual")
+        reveal(paused)
+        XCTAssertTrue(paused.exists, "a paused manual pipeline can still resume")
+        paused.switches.firstMatch.tap()
+        XCTAssertTrue(paused.waitForNonExistence(timeout: 5))
     }
 
     /// The server over real TLS, with its own certificate. The runner is the client:

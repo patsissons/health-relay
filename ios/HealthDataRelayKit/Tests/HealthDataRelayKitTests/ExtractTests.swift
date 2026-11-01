@@ -215,6 +215,22 @@ private func all(_ pager: MetricPager) async throws -> [MetricPoint] {
         #expect(r == [DateInterval(start: at("2026-10-31 00:00:00 -0400"), end: now)])
     }
 
+    @Test func presetsOfDaysMatchLastDays() throws {
+        let cases: [(DateRangePreset, Int)] = [(.last7Days, 7), (.last30Days, 30), (.last90Days, 90), (.last365Days, 365)]
+        for (preset, days) in cases {
+            #expect(try [preset.interval(now: now, calendar: calendar)] == planner.ranges(.lastDays(days), now: now))
+        }
+    }
+
+    @Test func aPresetOfHoursRollsAndDaysAreWhole() {
+        let hours = DateRangePreset.last24Hours.interval(now: now, calendar: calendar)
+        #expect(hours == DateInterval(start: now.addingTimeInterval(-86400), end: now))
+        // The clocks went back on Nov 1: the week starts at midnight on the old offset.
+        let week = DateRangePreset.last7Days.interval(now: now, calendar: calendar)
+        #expect(week.start == at("2026-10-26 00:00:00 -0400"))
+        #expect(week.end == now)
+    }
+
     @Test func sinceLastRunStartsAtTheCursor() throws {
         let last = at("2026-11-01 09:00:00 -0500")
         let r = try planner.ranges(.sinceLastRun, now: now, cursor: ExtractCursor(lastEnd: last))

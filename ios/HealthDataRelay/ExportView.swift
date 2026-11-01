@@ -7,8 +7,7 @@ struct ExportView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var template: TemplateLibrary.Entry?
-    @State private var from = Calendar.current.date(byAdding: .day, value: -7, to: .now)!
-    @State private var to = Date.now
+    @State private var dates = DateChoice()
     @State private var grouping: TimeGrouping? = .days
     @State private var sections: Set<ExtractSpec.Section> = [.metrics, .workouts]
     @State private var workout: WorkoutDetail?
@@ -41,8 +40,7 @@ struct ExportView: View {
 
             if workout == nil {
                 Section("Dates") {
-                    DatePicker("From", selection: $from, in: ...to, displayedComponents: .date)
-                    DatePicker("To", selection: $to, in: from...Date.now, displayedComponents: .date)
+                    DateChoiceFields(dates: $dates, id: "export-range")
                     Picker("Grouping", selection: $grouping) {
                         Text("Every sample").tag(TimeGrouping?.none)
                         Text("Minutes").tag(TimeGrouping?.some(.minutes))
@@ -122,13 +120,63 @@ struct ExportView: View {
                 range = DateInterval(start: workout.start, end: max(workout.end, workout.start.addingTimeInterval(1)))
             } else {
                 spec = ExtractSpec(sections: sections, grouping: grouping)
-                let calendar = Calendar.local()
-                let last = min(calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: to))!, .now)
-                range = DateInterval(start: calendar.startOfDay(for: from), end: max(last, calendar.startOfDay(for: from).addingTimeInterval(1)))
+                range = dates.interval
             }
             result = try await model.export(source: source, spec: spec, range: range)
         } catch {
             failure = String(describing: error)
+        }
+    }
+}
+
+/// Dates picked by hand: a preset, or nil for the two dates.
+private struct DateChoice {
+    var preset: DateRangePreset? = .last7Days
+    var from = Calendar.current.date(byAdding: .day, value: -7, to: .now)!
+    var to = Date.now
+
+    var interval: DateInterval {
+        let calendar = Calendar.local()
+        if let preset { return preset.interval(now: .now, calendar: calendar) }
+        let start = calendar.startOfDay(for: from)
+        let last = min(calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: to))!, .now)
+        return DateInterval(start: start, end: max(last, start.addingTimeInterval(1)))
+    }
+}
+
+/// The range picker, and the two dates when it's on Custom.
+private struct DateChoiceFields: View {
+    @Binding var dates: DateChoice
+    let id: String
+
+    var body: some View {
+        Picker("Range", selection: $dates.preset) {
+            ForEach(DateRangePreset.allCases, id: \.self) { Text($0.title).tag(DateRangePreset?.some($0)) }
+            Text("Custom").tag(DateRangePreset?.none)
+        }
+        .accessibilityIdentifier(id)
+        .onChange(of: dates.preset) { old, new in
+            // Custom starts from what was just showing.
+            guard new == nil, let interval = old?.interval(now: .now, calendar: Calendar.local()) else { return }
+            dates.from = interval.start
+            dates.to = interval.end
+        }
+        if dates.preset == nil {
+            DatePicker("From", selection: $dates.from, in: ...dates.to, displayedComponents: .date)
+                .accessibilityIdentifier("range-from")
+            DatePicker("To", selection: $dates.to, in: dates.from...Date.now, displayedComponents: .date)
+        }
+    }
+}
+
+extension DateRangePreset {
+    fileprivate var title: String {
+        switch self {
+        case .last24Hours: "Last 24 hours"
+        case .last7Days: "Last 7 days"
+        case .last30Days: "Last 30 days"
+        case .last90Days: "Last 90 days"
+        case .last365Days: "Last 365 days"
         }
     }
 }
@@ -173,18 +221,15 @@ struct RangePrompt: View {
     @Environment(\.dismiss) private var dismiss
     let name: String
     let run: (DateInterval) -> Void
-    @State private var from = Calendar.current.date(byAdding: .day, value: -7, to: .now)!
-    @State private var to = Date.now
+    @State private var dates = DateChoice()
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    DatePicker("From", selection: $from, in: ...to, displayedComponents: .date)
-                        .accessibilityIdentifier("range-from")
-                    DatePicker("To", selection: $to, in: from...Date.now, displayedComponents: .date)
+                    DateChoiceFields(dates: $dates, id: "range-preset")
                 } footer: {
-                    Text("Whole days, up to now.")
+                    Text(dates.preset == .last24Hours ? "The 24 hours up to now." : "Whole days, up to now.")
                 }
             }
             .navigationTitle(name)
@@ -195,9 +240,7 @@ struct RangePrompt: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Run") {
-                        let calendar = Calendar.current
-                        let end = min(calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: to))!, .now)
-                        run(DateInterval(start: calendar.startOfDay(for: from), end: max(end, calendar.startOfDay(for: from).addingTimeInterval(1))))
+                        run(dates.interval)
                         dismiss()
                     }
                     .accessibilityIdentifier("range-run")
