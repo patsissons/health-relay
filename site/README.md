@@ -12,6 +12,10 @@ node scripts/og-image.mjs  # re-render public/og.png from the Pipelines screensh
 pnpm run deploy          # needs CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID (../.env)
 ```
 
+A push to `main` that changes `site/` or a doc it's built from deploys it
+(`.github/workflows/deploy-site.yml`), and **Run workflow** on that action deploys
+on demand. `pnpm run deploy` is for deploying by hand.
+
 The reference pages are generated from `../docs/*.md` by
 `scripts/sync-docs.mjs` on every dev and build; edit the files in `docs/`.
 The screenshots in `src/assets/screenshots/` come from the iOS UI test
