@@ -47,6 +47,10 @@ public struct SyncProgress: Sendable, Equatable {
         case reading([Day])
         /// A batch going to a destination.
         case sending([Day], to: String)
+        /// A template writing its output.
+        case rendering(String)
+        /// One part of a template's output going to its destination.
+        case sendingPart(Int, of: Int, to: String)
     }
 
     public var step: Step
@@ -89,13 +93,23 @@ public actor Engine {
         public var now: @Sendable () -> Date
         public var pause: @Sendable (Duration) async -> Void
         public var makeDestination: @Sendable (Destination, String?) -> DestinationType
+        /// The richer reads template pipelines use.
+        public var queries: HealthQuerying?
+        public var makeTransport: @Sendable (LoadTarget, TransportContext) -> ArtifactTransport
+        public var templateSource: @Sendable (TemplateRef) -> String?
 
         public init(store: HealthStore, files: FileStore, tokens: TokenStore,
                     device: @escaping @Sendable (String) -> Device,
                     calendar: @escaping @Sendable () -> Calendar = { .local() },
                     now: @escaping @Sendable () -> Date = { Date() },
                     pause: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
-                    makeDestination: @escaping @Sendable (Destination, String?) -> DestinationType = Engine.httpDestination) {
+                    makeDestination: @escaping @Sendable (Destination, String?) -> DestinationType = Engine.httpDestination,
+                    queries: HealthQuerying? = nil,
+                    makeTransport: @escaping @Sendable (LoadTarget, TransportContext) -> ArtifactTransport = Engine.standardTransport,
+                    templateSource: @escaping @Sendable (TemplateRef) -> String? = Engine.builtInSource) {
+            self.queries = queries
+            self.makeTransport = makeTransport
+            self.templateSource = templateSource
             self.store = store
             self.files = files
             self.tokens = tokens
@@ -121,7 +135,19 @@ public actor Engine {
     public static let httpDestination: @Sendable (Destination, String?) -> DestinationType = { d, token in
         switch d.kind {
         case .http(let endpoint): HTTPEndpointDestination(endpoint: endpoint, token: token)
+        case .target: RefusingDestination()
         }
+    }
+
+    public static let standardTransport: @Sendable (LoadTarget, TransportContext) -> ArtifactTransport = { target, context in
+        switch target {
+        case .web(let web): WebTransport(target: web, context: context)
+        }
+    }
+
+    public static let builtInSource: @Sendable (TemplateRef) -> String? = { ref in
+        guard case .builtIn(let id) = ref else { return nil }
+        return BuiltInTemplates.source(id)
     }
 
     let env: Environment
@@ -141,6 +167,8 @@ public actor Engine {
     private var publishedAt = ContinuousClock.now
     /// While delivering: days to deliver, days delivered, and the batch in hand.
     private var plan = (total: 0, done: 0, batch: 0, destination: "")
+    /// Ranges picked for asked pipelines about to run.
+    private var answers: [UUID: DateInterval] = [:]
 
     public init(_ env: Environment) {
         self.env = env
@@ -166,7 +194,7 @@ public actor Engine {
         s.backgroundPlan = state.backgroundPlan
         s.pipelines = s.destinations.map {
             Pipeline(destination: $0.destination, lane: $0.lane, hasToken: $0.hasToken,
-                     trigger: state.trigger(for: $0.id), activity: activity($0.id))
+                     trigger: state.trigger(for: $0.id), activity: activity($0.id), definition: state.definitions?[$0.id])
         }
         return s
     }
@@ -271,23 +299,34 @@ public actor Engine {
 
     // MARK: Destinations
 
-    /// Adds a destination; its first run sends the last 30 days.
+    /// Adds a destination; its first run sends the last 30 days, unless its
+    /// definition asks for some other range.
     @discardableResult
-    public func add(_ destination: Destination, token: String?) -> Destination {
+    public func add(_ destination: Destination, token: String?, definition: PipelineDefinition? = nil) -> Destination {
         state.destinations.append(destination)
         env.tokens.setToken(token, for: destination.id)
         var lane = Lane()
-        lane.dirty.mark(readable(DirtyRules.last(DirtyRules.firstRunDays, today: today())), at: env.now())
+        if definition?.usesDirtyDays ?? true {
+            lane.dirty.mark(readable(DirtyRules.last(DirtyRules.firstRunDays, today: today())), at: env.now())
+        }
         state.lanes[destination.id] = lane
+        if let definition { state.definitions = (state.definitions ?? [:]).merging([destination.id: definition]) { _, new in new } }
         if state.lastSweep == nil { state.lastSweep = env.now() }
         changed()
         return destination
     }
 
     /// Saves edits; a changed credential or URL clears needs-attention and backoff.
-    public func update(_ destination: Destination, token: String?) {
+    public func update(_ destination: Destination, token: String?, definition: PipelineDefinition? = nil) {
         guard let i = state.destinations.firstIndex(where: { $0.id == destination.id }) else { return }
         state.destinations[i] = destination
+        if let definition {
+            let old = state.definitions?[destination.id]
+            state.definitions = (state.definitions ?? [:]).merging([destination.id: definition]) { _, new in new }
+            // A changed range starts over: its saved position meant something else.
+            if old?.extract.range != definition.extract.range { state.cursors?[destination.id] = nil }
+            if !definition.usesDirtyDays { state.lanes[destination.id]?.dirty = DirtySet() }
+        }
         env.tokens.setToken(token, for: destination.id)
         state.lanes[destination.id]?.attention = nil
         state.lanes[destination.id]?.failures = 0
@@ -307,7 +346,10 @@ public actor Engine {
         state.destinations.removeAll { $0.id == id }
         state.lanes[id] = nil
         state.triggers?[id] = nil
+        state.definitions?[id] = nil
+        state.cursors?[id] = nil
         env.files.removeLane(id)
+        env.files.removePipeline(id)
         env.tokens.setToken(nil, for: id)
         if state.destinations.isEmpty {
             state.anchors.reset()
@@ -324,19 +366,61 @@ public actor Engine {
         guard let d = state.destinations.first(where: { $0.id == id }) else {
             return Delivery(status: nil, verdict: .rejected, message: "No such destination")
         }
+        if case .target(let target) = d.kind, let definition = state.definitions?[id] {
+            let delivery = await testTemplate(id: id, destination: d, target: target, definition: definition)
+            noteTest(id, delivery)
+            return delivery
+        }
         let push = Push.empty(device: env.device(state.deviceName), at: env.now(), timeZone: env.calendar().timeZone)
         let delivery = await env.makeDestination(d, env.tokens.token(for: id)).deliver(push.body)
-        if var lane = state.lanes[id] {
-            lane.record(LogEntry(at: env.now(), days: [], delivery: delivery))
-            if delivery.verdict == .accepted {
-                lane.attention = nil
-                lane.failures = 0
-                lane.retryAfter = nil
-            }
-            state.lanes[id] = lane
-            changed()
-        }
+        noteTest(id, delivery)
         return delivery
+    }
+
+    private func noteTest(_ id: UUID, _ delivery: Delivery) {
+        guard var lane = state.lanes[id] else { return }
+        lane.record(LogEntry(at: env.now(), days: [], delivery: delivery))
+        if delivery.verdict == .accepted {
+            lane.attention = nil
+            lane.failures = 0
+            lane.retryAfter = nil
+        }
+        state.lanes[id] = lane
+        changed()
+    }
+
+    /// The template over no data: the shape a receiver will get, with nothing in it.
+    private func testTemplate(id: UUID, destination d: Destination, target: LoadTarget, definition: PipelineDefinition) async -> Delivery {
+        guard let queries = env.queries, let source = env.templateSource(definition.template) else {
+            return Delivery(status: nil, verdict: .rejected, message: "Template not found")
+        }
+        let calendar = env.calendar()
+        do {
+            let template = try ParsedTemplate(source: source)
+            let export = ExportInfo(device: env.device(state.deviceName), generatedAt: env.now(), timeZone: calendar.timeZone)
+            let extractor = Extractor(store: queries, spec: definition.extract, calendar: calendar, ranges: [])
+            let folder = try env.files.beginArtifact(id)
+            defer { try? FileManager.default.removeItem(at: folder) }
+            let file = folder.appendingPathComponent("test")
+            let sink = try FileSink(url: file)
+            var firstOnly = template
+            firstOnly.onlyFirstPartition = true
+            let run = try await TemplateTransformer(template: firstOnly).run(extractor: extractor, export: export) { _, _ in sink }
+            try sink.close()
+            guard let part = run.parts.first else { return Delivery(status: nil, verdict: .rejected, message: "The template wrote nothing") }
+            let address = try await run.destination(0, Engine.addressTemplate(target))
+            let info = ArtifactPart(key: part.key, filename: part.filename, file: "test", contentType: part.contentType, bytes: part.bytes, destination: address)
+            let context = TransportContext(pipelineID: id, pipelineName: d.name, extract: definition.extract, token: env.tokens.token(for: id))
+            return await env.makeTransport(target, context).deliver(part: info, file: file, artifact: Artifact(createdAt: env.now(), days: [], rows: 0, parts: [info]))
+        } catch {
+            return Delivery(status: nil, verdict: .rejected, message: String(describing: error))
+        }
+    }
+
+    static func addressTemplate(_ target: LoadTarget) -> String? {
+        switch target {
+        case .web(let web): web.url
+        }
     }
 
     /// Marks the last `n` days dirty for every destination (they go with the next sync).
@@ -409,11 +493,13 @@ public actor Engine {
     /// and whatever its backoff says. A pipeline that needs attention stays
     /// stopped until it is fixed.
     @discardableResult
-    public func run(_ id: UUID) async -> SyncReport {
+    public func run(_ id: UUID, answer: DateInterval? = nil) async -> SyncReport {
         queued.append(id)
         changed()
         while let running { _ = await running.value }
         queued.removeAll { $0 == id }
+        answers[id] = answer
+        defer { answers[id] = nil }
         return await start(.manual, [id], forced: true)
     }
 
@@ -432,7 +518,7 @@ public actor Engine {
             guard lane?.attention == nil else { return false }
             if let after = lane?.retryAfter {
                 if after > now { return false }
-                if lane?.dirty.isEmpty == false { return true }
+                if lane?.dirty.isEmpty == false || !env.files.artifacts(d.id).isEmpty { return true }
             }
             return schedule.next(after: lane?.lastRun) <= now
         }.map(\.id))
@@ -563,7 +649,8 @@ public actor Engine {
             state.lastSweep = started
         }
         let send = readable(Array(marked))
-        for id in state.lanes.keys { state.lanes[id]!.dirty.mark(send, at: started) }
+        // A pipeline with a range of its own has no use for dirty days.
+        for id in state.lanes.keys where state.definitions?[id]?.usesDirtyDays ?? true { state.lanes[id]!.dirty.mark(send, at: started) }
         changed()
 
         // 2. Each active destination in turn, sharing what was read.
@@ -595,14 +682,19 @@ public actor Engine {
                 report.failed += 1
                 continue
             }
-            let destination = env.makeDestination(d, env.tokens.token(for: d.id))
             plan.destination = d.name
             let id = d.id
             let access = Pusher.LaneAccess(read: { await self.lane(id) },
                                            update: { body in await self.updateLane(id, body) },
                                            shouldStop: { await self.limitReached })
-            let stop = await pusher.run(lane: id, access: access, destination: destination, build: build,
+            let stop: Pusher.Stop
+            if case .target(let target) = d.kind, let definition = state.definitions?[id] {
+                stop = await runTemplate(d, target: target, definition: definition, access: access, calendar: calendar, deviceName: deviceName)
+            } else {
+                let destination = env.makeDestination(d, env.tokens.token(for: d.id))
+                stop = await pusher.run(lane: id, access: access, destination: destination, build: build,
                                         progress: { await self.delivering($0) })
+            }
             // Removed while it sent: a batch written since must not linger.
             if state.lanes[id] == nil { env.files.removeLane(id) }
             switch stop {
@@ -638,6 +730,51 @@ public actor Engine {
         }
         state.lastSyncMessage = report.message
         return report
+    }
+
+    private func runTemplate(_ d: Destination, target: LoadTarget, definition: PipelineDefinition, access: Pusher.LaneAccess, calendar: Calendar, deviceName: String) async -> Pusher.Stop {
+        let id = d.id
+        guard let queries = env.queries, let source = env.templateSource(definition.template) else {
+            await access.update { $0.attention = "This pipeline's template is gone. Choose another." }
+            return .failed
+        }
+        let template: ParsedTemplate
+        do {
+            template = try ParsedTemplate(source: source)
+        } catch {
+            let message = String(describing: error)
+            await access.update {
+                $0.attention = message
+                $0.lastError = message
+            }
+            return .failed
+        }
+        let name = d.name
+        let env = env
+        let runner = ArtifactRunner(files: env.files, store: queries, calendar: calendar, now: env.now, pause: env.pause,
+                                    export: { ExportInfo(device: env.device(deviceName), generatedAt: env.now(), timeZone: calendar.timeZone) },
+                                    limits: TemplateLimits(deadline: limit))
+        let cursor = ArtifactRunner.CursorAccess(read: { await self.cursor(id) }, write: { await self.setCursor(id, $0) })
+        let context = TransportContext(pipelineID: id, pipelineName: name, extract: definition.extract, token: env.tokens.token(for: id))
+        return await runner.run(id: id, definition: definition, template: template, destinationTemplate: Engine.addressTemplate(target), access: access, cursor: cursor, answer: answers[id],
+                                transport: env.makeTransport(target, context), progress: { await self.templateStep($0, name: name) })
+    }
+
+    private func cursor(_ id: UUID) -> ExtractCursor { state.cursors?[id] ?? ExtractCursor() }
+
+    private func setCursor(_ id: UUID, _ cursor: ExtractCursor) {
+        state.cursors = (state.cursors ?? [:]).merging([id: cursor]) { _, new in new }
+        env.files.save(state)
+    }
+
+    private func templateStep(_ step: ArtifactRunner.Step, name: String) {
+        let overall = progress?.overall ?? SyncProgress.checkingShare
+        switch step {
+        case .rendering:
+            show(.rendering(name), item: 0, overall: overall)
+        case .sending(let part, let total):
+            show(.sendingPart(part, of: total, to: name), item: Double(part - 1) / Double(max(total, 1)), overall: overall)
+        }
     }
 
     /// Records why a run could not finish on the pipelines it covered.

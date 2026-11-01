@@ -383,8 +383,8 @@ public final class MemorySink: OutputSink {
 public final class FileSink: OutputSink {
     private let handle: FileHandle
 
-    public init(url: URL) throws {
-        FileManager.default.createFile(atPath: url.path, contents: nil)
+    public init(url: URL, attributes: [FileAttributeKey: Any]? = nil) throws {
+        FileManager.default.createFile(atPath: url.path, contents: nil, attributes: attributes)
         handle = try FileHandle(forWritingTo: url)
     }
 

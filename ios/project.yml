@@ -41,6 +41,7 @@ targets:
         BGTaskSchedulerPermittedIdentifiers: [com.patsissons.healthdatarelay.refresh]
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: Health Data Relay sends your Health data to destinations you add on your own network.
         # Setup links (healthdatarelay://destination?url=...), usually scanned from a QR code.
         CFBundleURLTypes:
           - CFBundleURLName: com.patsissons.healthdatarelay.setup

@@ -36,6 +36,8 @@ final class TemplateRenderer {
     private var captures: [[UInt8]] = []
     private var written = 0
     private var rows = 0
+    /// Rows read from Health, as opposed to looped over: zero means nothing to send.
+    private(set) var dataRows = 0
     private var globals: [String: TemplateValue]
     private var locals: [(name: String, value: TemplateValue)] = []
     private var currentLine: Int?
@@ -437,6 +439,7 @@ final class TemplateRenderer {
                 }
                 if let limit, produced + 1 == limit { isLast = true }
                 try countRow()
+                dataRows += 1
                 locals[depth].value = item
                 locals[depth + 1].value = .object(LoopInfo(index0: produced, length: nil, isLast: isLast))
                 let flow = fast ? try renderSync(body) : try await render(body)

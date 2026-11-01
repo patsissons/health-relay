@@ -206,6 +206,60 @@ final class HealthDataRelayUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["value-Heart Rate"].exists)
     }
 
+    /// A template pipeline from the editor to the receiver: a real read, a real
+    /// render and a real upload, checked in the delivery log.
+    func testTemplatePipelineRuns() throws {
+        let receiver = (env["RECEIVER_URL"] ?? "http://127.0.0.1:8787/") + "any"
+        let app = XCUIApplication()
+        app.launchArguments = ["-reset"]
+        app.launch()
+        tab("Seed")
+        app.buttons["seed"].tap()
+        allowHealth()
+        XCTAssertTrue(app.staticTexts["seed-status"].waitForExistence(timeout: 60))
+
+        tab("Pipelines")
+        app.buttons["add-pipeline"].tap()
+        type("pipeline-name", "Dashboard")
+        app.buttons["transform"].tap()
+        app.buttons["Metrics JSON v2"].tap()
+        // Today's all sent, whatever else has been seeded.
+        reveal(app.buttons["range"])
+        app.buttons["range"].tap()
+        app.buttons["Today"].tap()
+        reveal(app.textFields["pipeline-url"])
+        type("pipeline-url", receiver)
+        let tokenField = app.secureTextFields["pipeline-token"]
+        tokenField.tap()
+        tokenField.typeText(env["RECEIVER_TOKEN"] ?? "test-token")
+        snap("template-pipeline-new")
+        app.buttons["save-pipeline"].tap()
+        // In case iOS offers to save the token as a password.
+        if app.buttons["Not Now"].waitForExistence(timeout: 2) { app.buttons["Not Now"].tap() }
+        allowHealth()
+
+        XCTAssertTrue(app.buttons["save-pipeline"].waitForNonExistence(timeout: 10))
+        XCTAssertTrue(text("Metrics JSON v2").waitForExistence(timeout: 10))
+        XCTAssertTrue(text("Hasn't run yet").waitForExistence(timeout: 5))
+
+        // The card can take a tap while the sheet is still settling; tap again.
+        let card = app.staticTexts["Dashboard"].firstMatch
+        let runNow = app.buttons["run-now"]
+        for _ in 0..<3 where !runNow.exists {
+            card.tap()
+            _ = runNow.waitForExistence(timeout: 5)
+        }
+        runNow.tap()
+        XCTAssertTrue(text("Last run finished").waitForExistence(timeout: 120))
+
+        // The receiver's answer is in the log.
+        app.buttons["deliveries"].tap()
+        let found = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'Received'")).firstMatch.waitForExistence(timeout: 10)
+        snap("template-pipeline-log")
+        XCTAssertTrue(found, "the receiver answered")
+        snap("template-pipeline-ran")
+    }
+
     func testPhoneNameIsSavedOnLeavingTheField() throws {
         tab("Settings")
         let field = app.textFields["device-name"]
@@ -255,6 +309,13 @@ final class HealthDataRelayUITests: XCTestCase {
     }
 
     /// A static text containing `part`, ignoring case (section headers may be upper-cased).
+    /// Scrolls a long form until an element is on screen.
+    private func reveal(_ element: XCUIElement) {
+        for _ in 0..<8 where !(element.exists && element.isHittable) {
+            app.swipeUp()
+        }
+    }
+
     private func text(_ part: String) -> XCUIElement {
         app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", part)).firstMatch
     }

@@ -46,6 +46,8 @@
 	</dict>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Health Data Relay reads your Health data to send each day to the destinations you add. Nothing is sent anywhere else.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Health Data Relay sends your Health data to destinations you add on your own network.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

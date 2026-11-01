@@ -43,6 +43,10 @@ struct SettingsView: View {
                 } footer: {
                     Text("iOS keeps Health data locked while your iPhone is locked, so nothing can be read until you unlock it.")
                 }
+
+                Section {
+                    Link("Privacy policy", destination: URL(string: "https://health-relay.lgtm.page/privacy/")!)
+                }
             }
             .navigationTitle("Settings")
             .scrollDismissesKeyboard(.immediately)

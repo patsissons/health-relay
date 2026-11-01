@@ -20,6 +20,11 @@ public struct EngineState: Codable, Sendable {
     /// Each pipeline's trigger; missing ones follow `autoSync`. Optional so
     /// older state.json still decodes.
     public var triggers: [UUID: PipelineTrigger]?
+    /// What each template pipeline reads and writes; a pipeline missing here
+    /// is the native push. Optional so older state.json still decodes.
+    public var definitions: [UUID: PipelineDefinition]?
+    /// Where each template pipeline has read up to.
+    public var cursors: [UUID: ExtractCursor]?
 
     public init() {}
 }

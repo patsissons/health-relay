@@ -69,6 +69,36 @@ delivered. [templates.md](templates.md) is its contract. The native format stays
 native code, with its batching and bytes unchanged. A template twin of it ships for
 people to copy, and a test holds it to the fixture byte for byte.
 
+## Delivering a template's output
+
+A run writes each part to disk before anything is sent, in
+`pipelines/<id>/queue/<artifact>/`, under its final name only once it's complete. A
+retry sends those bytes rather than reading Health again, so a retry after new data
+arrives still sends what the run first saw, and a killed app carries on where it
+stopped. A half-written folder is never sent and is cleared at the next run. A
+pipeline's saved position moves only once its output is safe on disk.
+
+Parts deliver in order, and one that's accepted isn't sent again. A failure follows
+the destinations' rules below. A refused part drops the whole artifact, since the rest
+is the same run. A template error needs fixing, so it stops the pipeline rather than
+retrying.
+
+A run that finds output left from an earlier one delivers that and stops, rather than
+also reading a new range: the next run reads from where this left off. Since the last
+run sends nothing if nothing is new. Days that changed always send, because an empty day
+is how a deletion arrives.
+
+A pipeline with its own range collects no dirty days, so it can't hold the shared
+anchors back. One following changed days watches any type outside the native catalog
+with anchors of its own.
+
+The web target sends a request per part, streamed from its file, with any method, headers
+and bearer token, as a body or a file upload. Its address may be a template, rendered per
+part when the output is written. **Test** runs the template over no data, so a receiver
+sees the shape it will get with nothing in it. Automation headers (`automation-name`,
+`automation-id`, `automation-aggregation`, `automation-period`, `session-id`) are on by default,
+and a `session-id` is new per request.
+
 ## Destinations
 
 The app holds a list of destinations. Each has a type, a name, a paused

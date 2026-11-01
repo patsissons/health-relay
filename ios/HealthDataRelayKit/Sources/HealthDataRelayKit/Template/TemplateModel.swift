@@ -495,6 +495,31 @@ public struct RenderedPart: Sendable, Equatable {
     public var filename: String
     public var contentType: String
     public var bytes: Int
+    /// Rows read from Health; zero means the part holds no data.
+    public var rows: Int
+}
+
+/// Everything a run rendered, with what's needed to name each part's address.
+public struct RenderedRun: Sendable {
+    public var parts: [RenderedPart]
+    let globals: [[String: TemplateSendable]]
+    let timeZone: TimeZone
+    let limits: TemplateLimits
+
+    /// A target's address template, rendered for one part.
+    func destination(_ index: Int, _ template: String?) async throws -> String? {
+        guard let template, template.contains("{{") || template.contains("{%") else { return template }
+        let memory = MemorySink()
+        let body = try TemplateParser.parse(template)
+        let values = globals[index].mapValues(\.value)
+        try await TemplateRenderer(format: .text, timeZone: timeZone, globals: values, sink: memory, limits: limits).run(body)
+        return memory.string
+    }
+}
+
+/// Lets a run's variables travel with its result.
+public struct TemplateSendable: Sendable {
+    let value: TemplateValue
 }
 
 /// Writes a template's output: one part per partition, streamed to `sink`.
@@ -509,19 +534,28 @@ public struct TemplateTransformer: Sendable {
 
     /// Renders every partition. `sink` gets each part's name and returns where
     /// to write it. A failure stops the run: its parts aren't complete.
-    public func run(extractor: Extractor, export: ExportInfo, push: JSON? = nil, sink: (TemplatePartition, String) throws -> OutputSink) async throws -> [RenderedPart] {
+    public func run(extractor: Extractor, export: ExportInfo, push: JSON? = nil, sink: (TemplatePartition, String) throws -> OutputSink) async throws -> RenderedRun {
         let planner = PartitionPlanner(calendar: extractor.calendar)
         var out: [RenderedPart] = []
-        for partition in try await planner.partitions(template.header.partition, extractor: extractor) {
+        var allGlobals: [[String: TemplateSendable]] = []
+        var partitions = try await planner.partitions(template.header.partition, extractor: extractor)
+        if template.onlyFirstPartition {
+            // With no data a day or workout partition has no parts at all, so
+            // a test still writes the empty shape once.
+            partitions = Array(partitions.prefix(1))
+            if partitions.isEmpty { partitions = [TemplatePartition(kind: .none, key: "test", ranges: [])] }
+        }
+        for partition in partitions {
             let inner = Extractor(store: extractor.store, spec: extractor.spec, calendar: extractor.calendar, ranges: partition.ranges)
             let globals = TemplateData.globals(extractor: inner, partition: partition, export: export, format: template.header.format, push: push)
             let name = try await filename(partition, globals: globals, timeZone: export.timeZone)
             let counted = CountingSink(try sink(partition, name))
             let renderer = TemplateRenderer(format: template.header.format, timeZone: export.timeZone, globals: globals, sink: counted, limits: limits)
             try await renderer.run(template.body)
-            out.append(RenderedPart(key: partition.key, filename: name, contentType: template.header.contentType ?? template.header.format.contentType, bytes: counted.bytes))
+            out.append(RenderedPart(key: partition.key, filename: name, contentType: template.header.contentType ?? template.header.format.contentType, bytes: counted.bytes, rows: renderer.dataRows))
+            allGlobals.append(globals.mapValues { TemplateSendable(value: $0) })
         }
-        return out
+        return RenderedRun(parts: out, globals: allGlobals, timeZone: export.timeZone, limits: limits)
     }
 
     private func filename(_ partition: TemplatePartition, globals: [String: TemplateValue], timeZone: TimeZone) async throws -> String {

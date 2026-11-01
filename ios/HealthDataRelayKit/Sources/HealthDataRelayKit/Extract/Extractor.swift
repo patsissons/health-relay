@@ -147,7 +147,8 @@ public struct Extractor: Sendable {
             // Nothing is late before a first run, or without an anchor to
             // say the sample really is new.
             guard let lastEnd = cursor.lastEnd, cursor.anchors[type] != nil else { continue }
-            late += changes.added.filter { $0.start < lastEnd }
+            // An instant has no length, and a range with no length overlaps nothing.
+            late += changes.added.filter { $0.start < lastEnd }.map { DateInterval(start: $0.start, end: max($0.end, $0.start.addingTimeInterval(1))) }
         }
         return (mergeIntervals(late), anchors)
     }

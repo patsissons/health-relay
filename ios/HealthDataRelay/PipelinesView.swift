@@ -148,6 +148,15 @@ struct PipelineStateRow: View {
         } else if let message = lane.lastMessage {
             Label(message, systemImage: "exclamationmark.circle")
                 .foregroundStyle(.orange)
+        } else if let definition = pipeline.definition, !definition.usesDirtyDays {
+            // It has a range, not days to catch up on, so "up to date" would mean nothing.
+            if lane.lastRun == nil {
+                Label("Hasn't run yet", systemImage: "circle.dashed")
+                    .foregroundStyle(.secondary)
+            } else {
+                Label("Last run finished", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            }
         } else if lane.dirty.isEmpty {
             Label("Up to date", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green)
@@ -255,7 +264,7 @@ struct PipelineDetail: View {
 
                 Section("Pipeline") {
                     LabeledContent("Transform", value: pipeline.transform.title)
-                    LabeledContent("Destination", value: pipeline.endpoint.url.host() ?? "")
+                    LabeledContent("Destination", value: pipeline.destinationSummary)
                     LabeledContent("Trigger", value: pipeline.trigger.title)
                     Button("Edit") { editing = true }
                         .accessibilityIdentifier("edit-pipeline")
@@ -288,20 +297,24 @@ struct PipelineDetail: View {
                             .accessibilityIdentifier("test-result")
                     }
                 } footer: {
-                    Text("Test sends an empty push (no days). Any receiver of the schema answers it with success.")
+                    Text(pipeline.definition == nil
+                         ? "Test sends an empty push (no days). Any receiver of the schema answers it with success."
+                         : "Test sends the template's output with no data in it, so you can see the receiver's answer.")
                 }
 
-                Section {
-                    Menu {
-                        ForEach([7, 14, 35], id: \.self) { n in
-                            Button("Last \(n) days") { Task { await model.resend(id, lastDays: n) } }
+                if pipeline.definition?.usesDirtyDays ?? true {
+                    Section {
+                        Menu {
+                            ForEach([7, 14, 35], id: \.self) { n in
+                                Button("Last \(n) days") { Task { await model.resend(id, lastDays: n) } }
+                            }
+                        } label: {
+                            Label("Re-send recent days", systemImage: "clock.arrow.circlepath")
                         }
-                    } label: {
-                        Label("Re-send recent days", systemImage: "clock.arrow.circlepath")
+                        .disabled(pipeline.activity != .idle)
+                    } footer: {
+                        Text("Replaces those days at this destination with what this iPhone has now, deletions included.")
                     }
-                    .disabled(pipeline.activity != .idle)
-                } footer: {
-                    Text("Replaces those days at this destination with what this iPhone has now, deletions included.")
                 }
 
                 Section {
@@ -309,7 +322,9 @@ struct PipelineDetail: View {
                         get: { pipeline.destination.paused },
                         set: { paused in Task { await model.setPaused(id, paused) } }))
                 } footer: {
-                    Text("A paused pipeline keeps collecting days to send and catches up when resumed.")
+                    Text(pipeline.definition?.usesDirtyDays ?? true
+                         ? "A paused pipeline keeps collecting days to send and catches up when resumed."
+                         : "A paused pipeline doesn't run until resumed.")
                 }
 
                 Section {
@@ -335,8 +350,7 @@ struct PipelineDetail: View {
     }
 }
 
-/// Adds or edits a pipeline. Only its load target and trigger can be chosen
-/// so far; every pipeline extracts changed days and sends the schema.
+/// Adds or edits a pipeline: the native format, or a template and what it reads.
 struct PipelineEditor: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -355,11 +369,42 @@ struct PipelineEditor: View {
     @State private var unit = Schedule.Unit.hours
     @State private var saved: PipelineTrigger?
     @State private var loaded = false
+    /// Nil is the native format; otherwise a template and what it reads.
+    @State private var template: BuiltInChoice?
+    @State private var spec = ExtractSpec(range: .sinceLastRun, grouping: .automatic)
+    @State private var method = WebTarget.Method.post
+    @State private var multipart = false
+    @State private var automationHeaders = true
+
+    private struct BuiltInChoice: Hashable {
+        let id: String
+        let name: String
+    }
+
+    /// What the Transform picker offers: the native format, then every
+    /// built-in template except the native format's own twin, which is there to copy.
+    private var choices: [BuiltInChoice] {
+        BuiltInTemplates.all.filter { $0 != BuiltInTemplates.healthDataRelay }.compactMap { id in
+            (try? BuiltInTemplates.template(id)).map { BuiltInChoice(id: id, name: $0.header.name) }
+        }
+    }
 
     private var endpoint: HTTPEndpoint? {
         guard let u = URL(string: url.trimmingCharacters(in: .whitespaces)), let scheme = u.scheme?.lowercased(),
               ["http", "https"].contains(scheme), u.host() != nil else { return nil }
         return HTTPEndpoint(url: u, headers: headers.filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty })
+    }
+
+    /// A template's address may have its own template parts in it.
+    private var targetURLIsValid: Bool {
+        let text = url.trimmingCharacters(in: .whitespaces)
+        let literal = text.replacingOccurrences(of: "\\{\\{.*?\\}\\}", with: "x", options: .regularExpression)
+        guard let u = URL(string: literal), let scheme = u.scheme?.lowercased() else { return false }
+        return ["http", "https"].contains(scheme) && u.host() != nil
+    }
+
+    private var isValid: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty && (template == nil ? endpoint != nil : targetURLIsValid)
     }
 
     private var status: DestinationStatus? {
@@ -396,9 +441,19 @@ struct PipelineEditor: View {
             Section {
                 TextField("Name", text: $name)
                     .accessibilityIdentifier("pipeline-name")
-                LabeledContent("Transform", value: TransformSpec.healthDataRelayPush.title)
+                Picker("Transform", selection: $template) {
+                    Text(TransformSpec.healthDataRelayPush.title).tag(BuiltInChoice?.none)
+                    ForEach(choices, id: \.self) { Text($0.name).tag(BuiltInChoice?.some($0)) }
+                }
+                .accessibilityIdentifier("transform")
             } footer: {
-                Text("Sends each day that changed, whole, in the Health Data Relay schema, deletions included.")
+                Text(template == nil
+                     ? "Sends each day that changed, whole, in the Health Data Relay schema, deletions included."
+                     : "Written from a template, then sent. A failed send retries the same output.")
+            }
+
+            if template != nil {
+                ExtractEditor(spec: $spec)
             }
 
             Section {
@@ -414,10 +469,19 @@ struct PipelineEditor: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .accessibilityIdentifier("pipeline-token")
+                if template != nil {
+                    Picker("Method", selection: $method) {
+                        ForEach(WebTarget.Method.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    }
+                    Toggle("Send as a file upload", isOn: $multipart)
+                    Toggle("Send automation headers", isOn: $automationHeaders)
+                }
             } header: {
                 Text("Destination")
             } footer: {
-                Text("Each batch of days is POSTed as JSON, with Authorization: Bearer <token> when a token is set. The token is kept in the Keychain.")
+                Text(template == nil
+                     ? "Each batch of days is POSTed as JSON, with Authorization: Bearer <token> when a token is set. The token is kept in the Keychain."
+                     : "Authorization: Bearer <token> is sent when a token is set, and the token is kept in the Keychain. Automation headers name this pipeline, its grouping and range, for receivers that read them.")
             }
 
             Section {
@@ -474,19 +538,33 @@ struct PipelineEditor: View {
                         dismiss()
                     }
                 }
-                .disabled(endpoint == nil || name.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(!isValid)
                 .accessibilityIdentifier("save-pipeline")
             }
         }
         .task {
             guard !loaded else { return }
             loaded = true
-            if let existing, case .http(let e) = existing.kind {
+            if let existing {
                 name = existing.name
-                url = e.url.absoluteString
-                headers = e.headers
                 token = await model.token(for: existing.id)
-                let current = model.snapshot.pipelines.first { $0.id == existing.id }?.trigger
+                switch existing.kind {
+                case .http(let e):
+                    url = e.url.absoluteString
+                    headers = e.headers
+                case .target(.web(let web)):
+                    url = web.url
+                    headers = web.headers
+                    method = web.method
+                    automationHeaders = web.automationHeaders
+                    if case .multipart = web.body { multipart = true }
+                }
+                let pipeline = model.snapshot.pipelines.first { $0.id == existing.id }
+                if let definition = pipeline?.definition, case .builtIn(let id) = definition.template {
+                    template = BuiltInChoice(id: id, name: definition.templateName)
+                    spec = definition.extract
+                }
+                let current = pipeline?.trigger
                 saved = current
                 switch current {
                 case .whenHealthChanges: kind = .health
@@ -518,8 +596,16 @@ struct PipelineEditor: View {
     }
 
     private func save() async {
-        guard let endpoint else { return }
         let trimmed = name.trimmingCharacters(in: .whitespaces)
+        if let template {
+            let web = WebTarget(url: url.trimmingCharacters(in: .whitespaces), method: method,
+                                headers: headers.filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty },
+                                body: multipart ? .multipart(field: "file") : .raw, automationHeaders: automationHeaders)
+            let definition = PipelineDefinition(extract: spec, template: .builtIn(template.id), templateName: template.name)
+            await model.save(existing: status?.destination, name: trimmed, target: .web(web), definition: definition, token: token, trigger: trigger)
+            return
+        }
+        guard let endpoint else { return }
         if var d = status?.destination {
             d.name = trimmed
             d.kind = .http(endpoint)
@@ -533,7 +619,7 @@ struct PipelineEditor: View {
 extension Pipeline {
     /// "Health Data Relay → example.com"
     var flow: String {
-        "\(transform.title) → \(endpoint.url.host() ?? "")"
+        "\(transform.title) → \(destinationSummary)"
     }
 }
 
@@ -541,6 +627,7 @@ extension TransformSpec {
     var title: String {
         switch self {
         case .healthDataRelayPush: "Health Data Relay"
+        case .template(_, let name): name
         }
     }
 }
@@ -655,6 +742,8 @@ struct SyncProgressRow: View {
         case .checking: "Checking Health for changes"
         case .reading(let days): "Reading \(Self.span(days)) from Health"
         case .sending(let days, let name): "Sending \(Self.span(days)) to \(name)"
+        case .rendering(let name): "Writing \(name)'s output"
+        case .sendingPart(let part, let total, let name): total > 1 ? "Sending part \(part) of \(total) to \(name)" : "Sending to \(name)"
         }
     }
 

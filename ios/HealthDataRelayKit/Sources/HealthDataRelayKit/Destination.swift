@@ -5,6 +5,8 @@ import Security
 public struct Destination: Codable, Sendable, Identifiable, Equatable {
     public enum Kind: Codable, Sendable, Equatable {
         case http(HTTPEndpoint)
+        /// A template pipeline's destination; see `PipelineDefinition`.
+        case target(LoadTarget)
     }
 
     public var id: UUID
@@ -98,6 +100,13 @@ public struct Delivery: Codable, Sendable, Equatable {
 /// new kind (a file export, MQTT) implements only this.
 public protocol DestinationType: Sendable {
     func deliver(_ body: Data) async -> Delivery
+}
+
+/// The native path never sends for a template pipeline.
+struct RefusingDestination: DestinationType {
+    func deliver(_ body: Data) async -> Delivery {
+        Delivery(status: nil, verdict: .rejected, message: "This pipeline has no native destination")
+    }
 }
 
 /// POSTs the batch as JSON.

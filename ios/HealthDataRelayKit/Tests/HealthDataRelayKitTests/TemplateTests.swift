@@ -64,7 +64,7 @@ private func render(_ source: String, format: OutputFormat = .text, data: JSON =
             let prefix = zip(sink.string, want).prefix { $0 == $1 }.count
             Issue.record("differs at \(prefix): got …\(sink.string.dropFirst(max(0, prefix - 80)).prefix(200))… want …\(want.dropFirst(max(0, prefix - 80)).prefix(200))…")
         }
-        #expect(parts[0].bytes == want.utf8.count)
+        #expect(parts.parts[0].bytes == want.utf8.count)
     }
 }
 
@@ -266,7 +266,7 @@ private func render(_ source: String, format: OutputFormat = .text, data: JSON =
 
     private func export() -> ExportInfo { ExportInfo(device: FixtureTests.device, generatedAt: noon, timeZone: vancouver) }
 
-    private func run(_ source: String, store: HealthQuerying, spec: ExtractSpec = ExtractSpec(grouping: .days)) async throws -> (String, [RenderedPart]) {
+    private func run(_ source: String, store: HealthQuerying, spec: ExtractSpec = ExtractSpec(grouping: .days)) async throws -> (String, RenderedRun) {
         let extractor = Extractor(store: store, spec: spec, calendar: calendar, ranges: [day])
         let sink = MemorySink()
         let parts = try await TemplateTransformer(template: ParsedTemplate(source: source)).run(extractor: extractor, export: export()) { _, _ in sink }
@@ -385,7 +385,7 @@ private func render(_ source: String, format: OutputFormat = .text, data: JSON =
             files[name] = sink
             return sink
         }
-        #expect(parts.map(\.filename) == ["steps-2026-10-24.csv", "steps-2026-10-25.csv"])
+        #expect(parts.parts.map(\.filename) == ["steps-2026-10-24.csv", "steps-2026-10-25.csv"])
         #expect(files["steps-2026-10-24.csv"]?.string == "1")
         #expect(files["steps-2026-10-25.csv"]?.string == "2")
     }
@@ -422,7 +422,7 @@ private func render(_ source: String, format: OutputFormat = .text, data: JSON =
             #expect(name == "Outdoor Run-w1.gpx")
             return sink
         }
-        #expect(parts.count == 1)
+        #expect(parts.parts.count == 1)
         #expect(sink.string == #"<gpx><trk><name>Outdoor Run</name><trkseg><trkpt lat="49.5" lon="-123.25"><ele>10</ele></trkpt></trkseg></trk></gpx>"#)
     }
 
@@ -430,7 +430,7 @@ private func render(_ source: String, format: OutputFormat = .text, data: JSON =
         let t = try ParsedTemplate(source: "---\nname: n\nfilename: \"../{{ partition.key }}/x.txt\"\n---\nx")
         let e = Extractor(store: FakeHealthQuerying(calendar: calendar), spec: ExtractSpec(), calendar: calendar, ranges: [day])
         let parts = try await TemplateTransformer(template: t).run(extractor: e, export: export()) { _, _ in MemorySink() }
-        #expect(!parts[0].filename.contains("/"))
+        #expect(!parts.parts[0].filename.contains("/"))
     }
 
     @Test func aSleepPointWritesEveryField() async throws {
@@ -466,7 +466,7 @@ private func render(_ source: String, format: OutputFormat = .text, data: JSON =
             let clock = ContinuousClock.now
             let parts = try await TemplateTransformer(template: ParsedTemplate(source: source)).run(extractor: e, export: export) { _, _ in sink }
             let seconds = Double((ContinuousClock.now - clock).components.seconds) + Double((ContinuousClock.now - clock).components.attoseconds) / 1e18
-            print("BENCH \(label): \(rows) rows, \(parts[0].bytes / 1_000_000) MB in \(String(format: "%.2f", seconds))s = \(Int(Double(rows) / seconds)) rows/s")
+            print("BENCH \(label): \(rows) rows, \(parts.parts[0].bytes / 1_000_000) MB in \(String(format: "%.2f", seconds))s = \(Int(Double(rows) / seconds)) rows/s")
         }
     }
 }
@@ -492,7 +492,7 @@ private func render(_ source: String, format: OutputFormat = .text, data: JSON =
         let t = try ParsedTemplate(source: "---\nname: n\nformat: json\n---\n[{% for p in metrics.step_count.data %}{{ p }}{% unless forloop.last %},{% endunless %}{% endfor %}]")
         let before = footprint()
         let parts = try await TemplateTransformer(template: t).run(extractor: e, export: ExportInfo(device: FixtureTests.device, generatedAt: start, timeZone: vancouver)) { _, _ in sink }
-        #expect(parts[0].bytes > 100_000_000)
+        #expect(parts.parts[0].bytes > 100_000_000)
         #expect(sink.peak - before < 128 * 1024 * 1024, "grew by \((sink.peak - before) / 1024 / 1024) MB")
     }
 }

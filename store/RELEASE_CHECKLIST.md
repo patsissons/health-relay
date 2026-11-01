@@ -20,13 +20,13 @@ holder.
 
 ## Code (M2 to M5)
 
-- [ ] Milestones M2 to M5 complete. Template import stays out of this
+- [x] Milestones M2 to M5 complete. Template import stays out of this
       submission.
-- [ ] A privacy policy link inside the app (guideline 5.1.1(i) requires it
-      there and in the metadata; the app has none today).
-- [ ] `PrivacyInfo.xcprivacy`: no tracking, no collected types. Check for
-      required-reason APIs again at this point.
-- [ ] `NSLocalNetworkUsageDescription`, since the app allows LAN destinations.
+- [x] A privacy policy link inside the app (guideline 5.1.1(i) requires it
+      there and in the metadata), in Settings. It goes live when the site deploys.
+- [x] `PrivacyInfo.xcprivacy`: no tracking, no collected types. No required-reason
+      APIs are in use.
+- [x] `NSLocalNetworkUsageDescription`, since the app allows LAN destinations.
 - [ ] A universal link route for setup links. They carry bearer tokens, and
       another app could claim the `healthdatarelay://` scheme.
 - [ ] `MARKETING_VERSION` from 0.1 to 1.0. `device.app` in every push changes
@@ -35,7 +35,8 @@ holder.
 ## Site
 
 - [ ] Privacy policy hosted publicly, covering what the app reads, that it has
-      no server, how to revoke access and how to delete data.
+      no server, how to revoke access and how to delete data. Written, at
+      `site/src/content/docs/privacy.md`; needs the site deployed.
 - [ ] A support URL with a contact address.
 - [ ] A public demo receiver that accepts a test token. A reviewer can't reach
       `tools/receiver.mjs` on a LAN and needs a working destination.

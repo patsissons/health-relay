@@ -46,7 +46,8 @@ final class AppModel {
             store: health,
             files: files,
             tokens: KeychainTokenStore(),
-            device: { Device(name: $0, model: model, os: os, app: app) }))
+            device: { Device(name: $0, model: model, os: os, app: app) },
+            queries: health))
         let engine = engine
         Task { [weak self] in
             await engine.observe { snapshot in
@@ -221,6 +222,27 @@ final class AppModel {
     func add(name: String, endpoint: HTTPEndpoint, token: String, trigger: PipelineTrigger) async {
         let added = await engine.add(Destination(name: name, kind: .http(endpoint)), token: token)
         await engine.setTrigger(added.id, trigger)
+        await applyBackgroundPlan()
+    }
+
+    /// Adds or updates a template pipeline, asking Health for what it reads.
+    func save(existing: Destination?, name: String, target: LoadTarget, definition: PipelineDefinition, token: String, trigger: PipelineTrigger) async {
+        var extras: ReadExtras = []
+        if definition.extract.sections.contains(.workouts) { extras.insert(.routes) }
+        if definition.extract.grouping == nil { extras.insert(.heartbeats) }
+        if definition.extract.sections.contains(.stateOfMind) { extras.insert(.stateOfMind) }
+        if definition.extract.sections.contains(.medications) { extras.insert(.medications) }
+        try? await health.requestAuthorization(types: definition.extract.healthTypes, extras: extras)
+        let id: UUID
+        if var destination = existing {
+            destination.name = name
+            destination.kind = .target(target)
+            await engine.update(destination, token: token, definition: definition)
+            id = destination.id
+        } else {
+            id = await engine.add(Destination(name: name, kind: .target(target)), token: token, definition: definition).id
+        }
+        await engine.setTrigger(id, trigger)
         await applyBackgroundPlan()
     }
 

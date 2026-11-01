@@ -48,6 +48,7 @@ public struct Schedule: Codable, Sendable, Equatable {
 /// push is the schema (docs/schema.md), built in memory one batch at a time.
 public enum TransformSpec: Sendable, Equatable {
     case healthDataRelayPush
+    case template(TemplateRef, name: String)
 }
 
 /// One pipeline as the screens show it: Extract, Transform, Load and a
@@ -82,15 +83,36 @@ public struct Pipeline: Sendable, Identifiable, Equatable {
     public var trigger: PipelineTrigger
     public var activity: Activity
 
+    public init(destination: Destination, lane: Lane, hasToken: Bool, trigger: PipelineTrigger, activity: Activity, definition: PipelineDefinition? = nil) {
+        self.destination = destination
+        self.lane = lane
+        self.hasToken = hasToken
+        self.trigger = trigger
+        self.activity = activity
+        self.definition = definition
+    }
+
     public var id: UUID { destination.id }
     public var name: String { destination.name }
-    public var extract: ExtractSpec { .changedDays }
-    public var transform: TransformSpec { .healthDataRelayPush }
+    /// Set for a template pipeline; nil for the native push.
+    public var definition: PipelineDefinition?
+    public var extract: ExtractSpec { definition?.extract ?? .changedDays }
 
-    public var endpoint: HTTPEndpoint {
+    public var transform: TransformSpec {
+        definition.map { .template($0.template, name: $0.templateName) } ?? .healthDataRelayPush
+    }
+
+    /// Where it sends, for the screens.
+    public var destinationSummary: String {
         switch destination.kind {
-        case .http(let endpoint): endpoint
+        case .http(let endpoint): endpoint.url.host() ?? ""
+        case .target(let target): target.summary
         }
+    }
+
+    public var endpoint: HTTPEndpoint? {
+        if case .http(let endpoint) = destination.kind { return endpoint }
+        return nil
     }
 
     public func timing(now: Date) -> Timing {

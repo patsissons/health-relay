@@ -585,6 +585,8 @@ public struct ParsedTemplate: Sendable {
     public let source: String
     let body: TemplateBody
     let filename: TemplateBody?
+    /// Renders only the first partition: a test of a template over no data.
+    var onlyFirstPartition = false
 
     public init(source: String) throws {
         self.source = source

@@ -6,6 +6,11 @@ public enum BuiltInTemplates {
     /// path; this is there to copy, and a test holds it to the fixture.
     public static let healthDataRelay = "health-data-relay"
 
+    public static let metricsJSONv2 = "metrics-json-v2"
+
+    /// What the app offers to start from, in order.
+    public static let all = [healthDataRelay, metricsJSONv2]
+
     public static func source(_ id: String) -> String? {
         guard let url = Bundle.module.url(forResource: id, withExtension: "liquid", subdirectory: "Templates") else { return nil }
         return try? String(contentsOf: url, encoding: .utf8)
