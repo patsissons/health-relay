@@ -38,9 +38,9 @@ Health Data Relay moves data. It doesn't give medical advice.
 
 **What's new:** First release.
 
-**Support URL:** https://health-relay.lgtm.page
+**Support URL:** https://health-data-relay.lgtm.page
 
-**Privacy policy URL:** https://health-relay.lgtm.page/privacy/
+**Privacy policy URL:** https://health-data-relay.lgtm.page/privacy/
 
 **Review notes:**
 

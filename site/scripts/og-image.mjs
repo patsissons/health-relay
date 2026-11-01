@@ -42,9 +42,9 @@ const html = `<!doctype html>
 <div class="text">
   <div class="brand"><img src="${logo}">Health Data Relay</div>
   <h1>Your Apple Health data, delivered where you choose</h1>
-  <p>Exact, incremental sync from your iPhone to your own destinations, in one open schema.</p>
+  <p>Exact, incremental sync from your iPhone to your own destinations, in an open schema or any format you write.</p>
 </div>
-<div class="url">health-relay.lgtm.page</div>
+<div class="url">health-data-relay.lgtm.page</div>
 <img class="phone" src="${screenshot}">
 `
 
