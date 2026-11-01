@@ -702,8 +702,10 @@ public actor Engine {
     /// data would be removed at the destination. Kept from the first grant.
     public func noteAuthorized() {
         guard state.readableFrom == nil else { return }
-        state.readableFrom = today().adding(-(DirtyRules.firstRunDays - 1))
-        for id in state.lanes.keys { state.lanes[id]!.dirty.keep { readable($0) } }
+        let from = today().adding(-(DirtyRules.firstRunDays - 1))
+        state.readableFrom = from
+        // The test can't read `state`: `keep` is already writing to it.
+        for id in state.lanes.keys { state.lanes[id]!.dirty.keep { $0 >= from } }
         changed()
     }
 
@@ -711,8 +713,6 @@ public actor Engine {
         guard let from = state.readableFrom else { return days }
         return days.filter { $0 >= from }
     }
-
-    private func readable(_ day: Day) -> Bool { readable([day]) == [day] }
 
     private func run(_ trigger: Trigger, only ids: Set<UUID>?, forced: Bool) async -> SyncReport {
         let inRun: @Sendable (UUID) -> Bool = { ids?.contains($0) ?? true }

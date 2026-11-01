@@ -659,7 +659,7 @@ struct PipelineEditor: View {
             if existing == nil && setup == nil && link == nil {
                 Section {
                     Button {
-                        if let text = Pasteboard.string { model.importLink(text) } else { model.linkProblem = "There's nothing copied." }
+                        if let text = Pasteboard.string { Task { await model.importLink(text) } } else { model.linkProblem = "There's nothing copied." }
                         dismiss()
                     } label: {
                         Label("Use a copied link", systemImage: "doc.on.clipboard")

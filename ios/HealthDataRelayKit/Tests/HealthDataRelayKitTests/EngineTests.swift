@@ -394,6 +394,14 @@ extension Engine {
         #expect(await rig.lane().dirty.days.first?.description == "2026-09-26")
     }
 
+    @Test func aGrantAfterAddingAPipelineDropsDaysOutsideTheWindow() async {
+        let rig = Rig()
+        await rig.addAll()
+        await rig.engine.resend(lastDays: 60)
+        await rig.engine.noteAuthorized()
+        #expect(await rig.lane().dirty.days.first?.description == "2026-09-26")
+    }
+
     @Test func theWindowIsSetOnce() async {
         let rig = Rig()
         await rig.engine.noteAuthorized()
