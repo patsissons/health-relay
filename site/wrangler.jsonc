@@ -9,8 +9,6 @@
   "routes": [
     { "pattern": "health-data-relay.lgtm.page", "custom_domain": true },
     { "pattern": "healthdatarelay.lgtm.page", "custom_domain": true },
-    // The old name, until it's retired.
-    { "pattern": "health-relay.lgtm.page", "custom_domain": true },
   ],
   "workers_dev": false,
 }
