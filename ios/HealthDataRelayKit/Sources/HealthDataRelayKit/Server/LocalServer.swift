@@ -184,7 +184,7 @@ public struct LocalCertificate: Sendable {
         return "-----BEGIN CERTIFICATE-----\n\(body)\n-----END CERTIFICATE-----\n"
     }
 
-    #if os(iOS)
+    #if os(iOS) || os(visionOS)
     /// Files the key and certificate in the Keychain, where iOS can pair them
     /// into the identity TLS needs. Replaces any earlier one.
     public func identity(label: String = "health-data-relay.server") throws -> sec_identity_t {

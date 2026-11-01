@@ -64,7 +64,7 @@ public struct FolderTransport: ArtifactTransport {
         var stale = false
         let folder: URL
         do {
-            #if os(iOS)
+            #if os(iOS) || os(visionOS)
             folder = try URL(resolvingBookmarkData: bookmark, options: [], relativeTo: nil, bookmarkDataIsStale: &stale)
             #else
             folder = try URL(resolvingBookmarkData: bookmark, options: [.withSecurityScope], relativeTo: nil, bookmarkDataIsStale: &stale)

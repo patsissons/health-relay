@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "HealthDataRelayKit",
-    platforms: [.iOS(.v17), .macOS(.v14)],
+    platforms: [.iOS(.v17), .macOS(.v14), .visionOS(.v2)],
     products: [
         .library(name: "HealthDataRelayKit", targets: ["HealthDataRelayKit"]),
     ],

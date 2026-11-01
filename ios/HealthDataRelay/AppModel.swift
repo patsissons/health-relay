@@ -1,7 +1,9 @@
 import BackgroundTasks
 import HealthKit
 import UserNotifications
+#if canImport(WidgetKit)
 import WidgetKit
+#endif
 import HealthDataRelayKit
 import Observation
 import SwiftUI
@@ -332,7 +334,9 @@ final class AppModel {
                          runLink: manual ? RunLink(pipeline: p.id, key: key).url : nil)
         }
         WidgetSnapshot(updatedAt: .now, pipelines: rows, values: values).write()
+        #if canImport(WidgetKit)
         WidgetCenter.shared.reloadAllTimelines()
+        #endif
     }
 
     // MARK: Charts
@@ -392,7 +396,8 @@ final class AppModel {
         accounts = await engine.accounts
     }
 
-    /// Calendars a pipeline could write to, asking for access first.
+    /// Calendars a pipeline could write to, asking for access first, since
+    /// choosing one needs their names.
     func writableCalendars() async -> [(id: String, title: String)] {
         let store = LiveCalendarStore()
         _ = try? await store.requestAccess()
@@ -489,6 +494,8 @@ final class AppModel {
         if definition.extract.sections.contains(.stateOfMind) { extras.insert(.stateOfMind) }
         if definition.extract.sections.contains(.medications) { extras.insert(.medications) }
         try? await health.requestAuthorization(types: definition.extract.healthTypes, extras: extras)
+        // Now, while someone's here to answer: a run never asks.
+        if case .calendar = target { _ = try? await LiveCalendarStore().requestAccess() }
         let id: UUID
         if var destination = existing {
             destination.name = name

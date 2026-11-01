@@ -1,4 +1,4 @@
-#if os(iOS)
+#if os(iOS) || os(visionOS) || os(visionOS)
 import CoreLocation
 import Foundation
 import HealthKit
@@ -20,7 +20,7 @@ extension LiveHealthStore: HealthQuerying {
 
     public func requestAuthorization(types: [HealthType], extras: ReadExtras) async throws {
         try await healthStore.requestAuthorization(toShare: [], read: Self.objectTypes(types, extras: extras))
-        if extras.contains(.medications), #available(iOS 26.0, *) {
+        if extras.contains(.medications), #available(iOS 26.0, visionOS 26.0, *) {
             // Medications are shared one by one, on a sheet of their own.
             try await healthStore.requestPerObjectReadAuthorization(for: HKObjectType.userAnnotatedMedicationType(), predicate: nil)
         }
@@ -331,7 +331,7 @@ extension LiveHealthStore: HealthQuerying {
     }
 
     public func medicationDoses(in range: DateInterval) async throws -> [MedicationDose] {
-        guard #available(iOS 26.0, *) else { return [] }
+        guard #available(iOS 26.0, visionOS 26.0, *) else { return [] }
         let medications = try await HKUserAnnotatedMedicationQueryDescriptor().result(for: healthStore)
         let names = Dictionary(medications.map { ($0.medication.identifier, ($0.medication.displayText, $0.nickname)) }) { first, _ in first }
         let predicate = HKQuery.predicateForSamples(withStart: range.start, end: range.end)
@@ -345,7 +345,7 @@ extension LiveHealthStore: HealthQuerying {
         }
     }
 
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, visionOS 26.0, *)
     private static func doseStatus(_ s: HKMedicationDoseEvent.LogStatus) -> String {
         switch s {
         case .notInteracted: "Not Interacted"

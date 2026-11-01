@@ -2,6 +2,10 @@ import HealthDataRelayKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+enum Pasteboard {
+    @MainActor static var string: String? { UIPasteboard.general.string }
+}
+
 /// One card per pipeline: what it does, how it stands, and when it runs.
 struct PipelinesView: View {
     @State private var exporting = false
@@ -49,8 +53,11 @@ struct PipelinesView: View {
                                 .buttonStyle(.borderedProminent)
                         }
                     }
-                    ForEach(snapshot.pipelines) { pipeline in
-                        PipelineCard(pipeline: pipeline, progress: snapshot.progress)
+                    // One column on a phone, as many as fit on a larger screen.
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 340), spacing: 16, alignment: .top)], spacing: 16) {
+                        ForEach(snapshot.pipelines) { pipeline in
+                            PipelineCard(pipeline: pipeline, progress: snapshot.progress)
+                        }
                     }
                 }
                 .padding()
@@ -401,6 +408,29 @@ struct PipelineDetail: View {
     }
 }
 
+/// Common jobs to start from, each with what it does.
+private struct PresetList: View {
+    @Environment(\.dismiss) private var dismiss
+    let choose: (PipelinePreset) -> Void
+
+    var body: some View {
+        List(PipelinePreset.all()) { preset in
+            Button {
+                choose(preset)
+                dismiss()
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(preset.name).foregroundStyle(.primary)
+                    Text(preset.note).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityIdentifier("preset-\(preset.name)")
+        }
+        .navigationTitle("Presets")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
 /// Adds or edits a pipeline: the native format, or a template and what it reads.
 struct PipelineEditor: View {
     @Environment(AppModel.self) private var model
@@ -611,21 +641,14 @@ struct PipelineEditor: View {
             if existing == nil && setup == nil && link == nil {
                 Section {
                     Button {
-                        if let text = UIPasteboard.general.string { model.importLink(text) } else { model.linkProblem = "There's nothing copied." }
+                        if let text = Pasteboard.string { model.importLink(text) } else { model.linkProblem = "There's nothing copied." }
                         dismiss()
                     } label: {
                         Label("Use a copied link", systemImage: "doc.on.clipboard")
                     }
                     .accessibilityIdentifier("paste-link")
-                    Menu {
-                        ForEach(PipelinePreset.all()) { preset in
-                            Button {
-                                apply(preset)
-                            } label: {
-                                Text(preset.name)
-                                Text(preset.note)
-                            }
-                        }
+                    NavigationLink {
+                        PresetList { apply($0) }
                     } label: {
                         Label("Start from a preset", systemImage: "wand.and.stars")
                     }

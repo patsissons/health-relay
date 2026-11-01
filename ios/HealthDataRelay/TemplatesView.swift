@@ -262,7 +262,9 @@ private struct CodeEditor: UIViewRepresentable {
         view.smartQuotesType = .no
         view.smartDashesType = .no
         view.smartInsertDeleteType = .no
+        #if !os(visionOS)
         view.keyboardDismissMode = .interactive
+        #endif
         view.delegate = context.coordinator
         view.text = text
         return view

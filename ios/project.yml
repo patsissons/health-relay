@@ -24,12 +24,15 @@ packages:
 targets:
   HealthDataRelay:
     type: application
-    platform: iOS
+    platform: auto
+    supportedDestinations: [iOS, visionOS]
     sources:
       - path: HealthDataRelay
     dependencies:
       - package: HealthDataRelayKit
+      # There's no Home Screen for it on Vision Pro.
       - target: HealthDataRelayWidgets
+        destinationFilters: [iOS]
     info:
       path: HealthDataRelay/Info.plist
       properties:
@@ -39,7 +42,8 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         LSRequiresIPhoneOS: true
         UILaunchScreen: {}
-        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UISupportedInterfaceOrientations~iphone: [UIInterfaceOrientationPortrait]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         NSHealthShareUsageDescription: Health Data Relay reads your Health data to send each day to the destinations you add. Nothing is sent anywhere else.
         UIBackgroundModes: [fetch, processing]
         BGTaskSchedulerPermittedIdentifiers: [com.patsissons.healthdatarelay.refresh, com.patsissons.healthdatarelay.processing]
@@ -65,7 +69,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.patsissons.healthdatarelay
         PRODUCT_NAME: HealthDataRelay
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2,7"
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
@@ -99,7 +103,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.patsissons.healthdatarelay.widgets
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: YES
   HealthDataRelayUITests:

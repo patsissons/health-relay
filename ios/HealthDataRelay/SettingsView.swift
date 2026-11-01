@@ -65,7 +65,7 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
-            .scrollDismissesKeyboard(.immediately)
+            .dismissingKeyboardOnScroll()
             // The saved name, once loaded and after each save, unless being edited.
             .onChange(of: snapshot.deviceName, initial: true) { _, name in
                 if !editingName { deviceName = name }
@@ -121,5 +121,16 @@ struct TypesView: View {
         default:
             return bare.replacingOccurrences(of: "([a-z])([A-Z])", with: "$1 $2", options: .regularExpression)
         }
+    }
+}
+
+extension View {
+    /// Vision Pro has no keyboard to scroll away.
+    @ViewBuilder func dismissingKeyboardOnScroll() -> some View {
+        #if os(visionOS)
+        self
+        #else
+        scrollDismissesKeyboard(.immediately)
+        #endif
     }
 }

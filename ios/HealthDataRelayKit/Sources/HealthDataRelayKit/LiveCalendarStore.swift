@@ -1,4 +1,4 @@
-#if os(iOS)
+#if os(iOS) || os(visionOS) || os(visionOS)
 import EventKit
 import Foundation
 
@@ -11,6 +11,8 @@ public final class LiveCalendarStore: CalendarStore, @unchecked Sendable {
     public func requestAccess() async throws -> Bool {
         try await store.requestFullAccessToEvents()
     }
+
+    public var hasAccess: Bool { EKEventStore.authorizationStatus(for: .event) == .fullAccess }
 
     /// Calendars an event can be written to.
     public func writableCalendars() -> [(id: String, title: String)] {

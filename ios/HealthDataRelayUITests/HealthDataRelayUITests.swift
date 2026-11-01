@@ -402,16 +402,22 @@ final class HealthDataRelayUITests: XCTestCase {
 
         tab("Pipelines")
         app.buttons["add-pipeline"].tap()
-        XCTAssertTrue(app.buttons["preset"].waitForExistence(timeout: 5))
-        app.buttons["preset"].tap()
-        // A menu item's label includes its note.
-        let preset = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Workouts on my calendar'")).firstMatch
-        XCTAssertTrue(preset.waitForExistence(timeout: 5))
+        let presets = app.buttons["preset"]
+        let preset = app.buttons["preset-Workouts on my calendar"]
+        XCTAssertTrue(presets.waitForExistence(timeout: 5))
+        // A tap while the sheet settles can be lost.
+        for _ in 0..<3 where !preset.exists {
+            presets.tap()
+            _ = preset.waitForExistence(timeout: 3)
+        }
+        XCTAssertTrue(preset.exists)
         preset.tap()
+        // The picker's row asks if it's on screen, which depends on the device.
         allowCalendar()
         snap("calendar-pipeline-new")
         app.buttons["save-pipeline"].tap()
         allowHealth()
+        allowCalendar()
         XCTAssertTrue(app.buttons["save-pipeline"].waitForNonExistence(timeout: 10))
 
         let card = app.staticTexts["Workouts on my calendar"].firstMatch
@@ -421,7 +427,6 @@ final class HealthDataRelayUITests: XCTestCase {
             _ = runNow.waitForExistence(timeout: 5)
         }
         runNow.tap()
-        allowCalendar()
         XCTAssertTrue(text("Last run finished").waitForExistence(timeout: 120))
         app.buttons["deliveries"].tap()
         let wrote = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'in Calendar' OR label CONTAINS ' event'")).firstMatch
@@ -540,9 +545,19 @@ final class HealthDataRelayUITests: XCTestCase {
 
     /// Answers iOS's calendar permission alert, which runs in another process.
     private func allowCalendar() {
+        // Answered by SpringBoard on a phone, and shown in the app's own alerts on some iPads.
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let allow = springboard.alerts.buttons.matching(NSPredicate(format: "label CONTAINS 'Allow'")).firstMatch
-        if allow.waitForExistence(timeout: 4) { allow.tap() }
+        let allowed = NSPredicate(format: "label CONTAINS 'Allow'")
+        for _ in 0..<8 {
+            for alerts in [springboard.alerts, app.alerts] {
+                let allow = alerts.buttons.matching(allowed).firstMatch
+                if allow.exists {
+                    allow.tap()
+                    return
+                }
+            }
+            sleep(1)
+        }
     }
 
     func testPhoneNameIsSavedOnLeavingTheField() throws {
@@ -660,7 +675,9 @@ final class HealthDataRelayUITests: XCTestCase {
 
     /// Selects a tab once the tab bar is usable again (a sheet may be closing).
     private func tab(_ name: String) {
-        let button = app.tabBars.buttons[name]
+        // A phone's tab bar; on iPad, tabs float at the top and aren't exposed as one.
+        var button = app.tabBars.buttons[name]
+        if !button.waitForExistence(timeout: 3) { button = app.buttons[name].firstMatch }
         XCTAssertTrue(button.waitForExistence(timeout: 10))
         for _ in 0..<10 where !button.isSelected {
             button.tap()

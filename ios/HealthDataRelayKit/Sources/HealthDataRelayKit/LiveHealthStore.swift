@@ -1,4 +1,4 @@
-#if os(iOS)
+#if os(iOS) || os(visionOS) || os(visionOS)
 import CoreLocation
 import Foundation
 import HealthKit

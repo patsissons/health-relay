@@ -46,7 +46,10 @@ public protocol CalendarStore: Sendable {
     /// Creates or updates an event, returning its identifier. `existing` is the
     /// one from last time, which may since have been deleted by the user.
     func save(_ event: CalendarEvent, existing: String?, calendarID: String?) async throws -> String
+    /// Asks the user, so only from a screen they're looking at.
     func requestAccess() async throws -> Bool
+    /// Whether it's allowed, without asking.
+    var hasAccess: Bool { get }
 }
 
 /// Writes events, remembering which event each key became, so a rerun or a
@@ -64,7 +67,9 @@ public struct CalendarTransport: ArtifactTransport {
 
     public func deliver(part: ArtifactPart, file: URL, artifact: Artifact) async -> Delivery {
         do {
-            guard try await store.requestAccess() else {
+            // Never asks here: a run can be in the background, where a prompt
+            // nobody can answer would hold up every other pipeline.
+            guard store.hasAccess else {
                 return Delivery(status: nil, verdict: .authFailed, message: "Calendar access is off. Turn it on in Settings › Privacy & Security › Calendars.")
             }
             let events = try CalendarEvent.parse(try Data(contentsOf: file))

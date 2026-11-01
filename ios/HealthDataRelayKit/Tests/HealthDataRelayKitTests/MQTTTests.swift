@@ -254,7 +254,14 @@ final class FakeCalendar: CalendarStore, @unchecked Sendable {
     private var next = 0
     var allowed = true
 
-    func requestAccess() async throws -> Bool { allowed }
+    private(set) var asked = false
+
+    func requestAccess() async throws -> Bool {
+        asked = true
+        return allowed
+    }
+
+    var hasAccess: Bool { allowed }
 
     func save(_ event: CalendarEvent, existing: String?, calendarID: String?) async throws -> String {
         lock.withLock {
@@ -337,6 +344,8 @@ final class FakeCalendar: CalendarStore, @unchecked Sendable {
         let engine = engine(calendar, queries: store())
         await engine.run(await pipeline(engine))
         #expect(await engine.snapshot.pipelines[0].lane.attention?.contains("Calendar access") == true)
+        // A run may have nobody there to answer a prompt.
+        #expect(!calendar.asked)
     }
 
     @Test func aBadEventIsRefusedWithAReason() {

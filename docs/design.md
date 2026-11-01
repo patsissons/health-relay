@@ -118,7 +118,8 @@ rendered per part.
 with a long-lived token, and a template writing one sensor per metric that has data.
 
 **Calendar** writes events a template lists as `{"events": [{"key", "title", "start", "end", "allDay", "notes", "location"}]}`.
-Which event each key became is saved, so running again updates an event rather than adding one, and an event the
+Calendar access is asked for when the pipeline is saved, and a run only checks it: a run can be in the background, where a prompt nobody can answer would hold up every
+other pipeline. Which event each key became is saved, so running again updates an event rather than adding one, and an event the
 user deleted is made again. Only events a pipeline made are touched.
 
 ## Email
@@ -172,6 +173,11 @@ there. `exportversion=v1` is refused, since a receiver asking for v1 can't read 
 folder, so they work without reading Health. A widget's run button holds a random key private to the phone, so no other app can trigger a send with a link.
 
 **Charts** shows a metric over 7 days to a year. It reads when asked, and nothing is sent.
+
+## Other devices
+
+**iPad** runs the same app, in every orientation, with pipeline cards in as many columns as fit. **Vision Pro** builds natively from the same code, with no widgets, since it has
+no Home Screen. Health data exists only where iOS keeps it, so what a Vision Pro can read depends on what visionOS shares with it.
 
 ## Notifications and activity
 
