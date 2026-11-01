@@ -2,7 +2,7 @@
 // reference section, so the schema has one source. Each file's first
 // heading becomes its title; links to sibling docs become site links and
 // links elsewhere in the repo become GitHub links.
-import { readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -29,6 +29,9 @@ function rewrite(markdown) {
     return `](${repo}/${resolved}${hash})`
   })
 }
+
+// Every page in it is generated and gitignored, so a fresh clone doesn't have it.
+mkdirSync(out, { recursive: true })
 
 for (const p of pages) {
   const source = readFileSync(path.join(docs, p.file), 'utf8')
