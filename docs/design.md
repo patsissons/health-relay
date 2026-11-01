@@ -147,6 +147,19 @@ asking how much arrived. Google Drive can turn a CSV into a Sheet as it uploads,
 **iCloud Drive is off.** Guideline 5.1.3(ii) says apps "may not store personal health information in iCloud", so a folder there is refused until
 Apple has answered whether a file a user chose to put there themselves counts. `Features.iCloudDriveFolders` turns it on.
 
+## The on-device server
+
+Off unless turned on, and running only while the app is open, since iOS suspends a backgrounded app.
+
+**MCP** answers over HTTPS on the phone's network, at `/mcp`, with one tool per section: `health_metrics`, `workouts`, `symptoms`, `ecg`,
+`heart_rate_notifications`, `state_of_mind`, `cycle_tracking` and `medications`. Each takes `start` and `end` dates, and metrics also take `metrics` and
+`grouping`. A tool returns the same JSON a pipeline writes, up to 8 MB. A request needs the bearer token the app shows, compared in constant
+time, and a wrong one gets 401. Its certificate is made on the phone and shown by fingerprint, because no public authority can vouch for a home network.
+It's remade if the phone's address changes, and nothing else can reach the key in the Keychain.
+
+**TCP** is newline-separated JSON-RPC with the same tools, for tools that can't use MCP. It has no password and no encryption, so it's off by default, separate
+from MCP, and the screen says plainly that anyone on the network can read Health data while it's on.
+
 ## Notifications and activity
 
 A pipeline can notify when it fails, when it finishes, and, if scheduled, a few minutes after it's

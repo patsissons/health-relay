@@ -261,6 +261,10 @@ final class MQTTConnection: @unchecked Sendable {
         }
     }
 
+    func readByte() async throws -> UInt8 {
+        try await read(1)[0]
+    }
+
     /// The next packet's type and body.
     func readPacket() async throws -> (type: UInt8, body: Data) {
         let first = try await read(1)[0]

@@ -47,6 +47,13 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    NavigationLink("Server") { ServerView() }
+                        .accessibilityIdentifier("server")
+                } footer: {
+                    Text("Lets tools on your network ask about your Health data while this app is open.")
+                }
+
+                Section {
                     NavigationLink("Connected accounts") { AccountsView() }
                         .accessibilityIdentifier("connected-accounts")
                 } footer: {

@@ -45,7 +45,7 @@ targets:
         HDRDropboxClientID: $(HDR_DROPBOX_CLIENT_ID)
         HDRGoogleClientID: $(HDR_GOOGLE_CLIENT_ID)
         NSCalendarsFullAccessUsageDescription: Health Data Relay writes events to the calendar you choose, for a pipeline you set up to do that. It doesn't read your other events.
-        NSLocalNetworkUsageDescription: Health Data Relay sends your Health data to destinations you add on your own network.
+        NSLocalNetworkUsageDescription: Health Data Relay sends your Health data to destinations you add on your own network, and answers tools you allow when you turn on its server.
         # Setup links (healthdatarelay://destination?url=...), usually scanned from a QR code.
         CFBundleURLTypes:
           - CFBundleURLName: com.patsissons.healthdatarelay.setup

@@ -112,3 +112,8 @@ A template pipeline can send to **Email**, from your own mail server or a servic
 anything, or by composing in Mail, Gmail or another app with a tap. It can also send to **MQTT**, one message per part, or to **Calendar**, where each workout or other event
 stays one event however often it runs. For **Home Assistant**, start from its preset: fill in your server's address and a
 long-lived access token, and each metric appears as a sensor.
+
+## Asking from AI tools
+
+**Settings › Server** can answer tools on your own network while the app is open. Turn on **MCP server**, then give your tool the address, the token and
+the certificate. It can then ask for your metrics, workouts, symptoms and other Health data by date. Nothing goes anywhere else.

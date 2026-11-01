@@ -1,16 +1,18 @@
 {
   "name": "template-conformance",
   "private": true,
-  "description": "Checks the app against independent implementations: its template language with liquidjs, its MQTT client with the aedes broker, its SMTP client with smtp-server. Development only: nothing here ships.",
+  "description": "Checks the app against independent implementations: its template language with liquidjs, its MQTT client with the aedes broker, its SMTP client with smtp-server, its MCP server with the official client. Development only: nothing here ships.",
   "type": "module",
   "scripts": {
     "test": "node conformance.mjs",
     "mqtt": "node mqtt-broker.mjs",
-    "smtp": "node smtp-server.mjs"
+    "smtp": "node smtp-server.mjs",
+    "mcp": "node mcp-client.mjs"
   },
   "devDependencies": {
     "liquidjs": "10.21.1",
     "aedes": "0.51.3",
-    "smtp-server": "3.13.6"
+    "smtp-server": "3.13.6",
+    "@modelcontextprotocol/sdk": "1.17.3"
   }
 }

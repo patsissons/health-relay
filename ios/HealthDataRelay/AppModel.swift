@@ -25,6 +25,7 @@ final class AppModel {
     private var watcher: Task<Void, Never>?
     let library: TemplateLibrary
     private let files: FileStore
+    private(set) var server: ServerController!
     let uploader: BackgroundUploader
     private(set) var customTemplates: [CustomTemplate] = []
     private(set) var accounts: [ConnectedAccount] = []
@@ -64,6 +65,11 @@ final class AppModel {
             uploader: uploader,
             calendars: LiveCalendarStore(),
             oauth: { AppModel.oauth($0) }))
+        let health = health
+        let serverDevice = Device(name: "iPhone", model: model, os: os, app: app)
+        server = ServerController(root: files.root, tokens: KeychainTokenStore()) {
+            MCPHandler(store: health, calendar: .local(), device: serverDevice)
+        }
         let engine = engine
         Task { [weak self] in
             await engine.observe { snapshot in
@@ -221,6 +227,7 @@ final class AppModel {
         await engine.reloadIfUnreadable()
         await refreshAuthorization()
         watchSchedules()
+        await server.start()
         await engine.syncIfStale()
         await applyBackgroundPlan()
     }
@@ -228,6 +235,8 @@ final class AppModel {
     func leftForeground() {
         watcher?.cancel()
         watcher = nil
+        // iOS would suspend it anyway; stopping leaves no half-open port behind.
+        server.stop()
     }
 
     /// A countdown reaching zero on screen runs its pipeline. A pipeline that

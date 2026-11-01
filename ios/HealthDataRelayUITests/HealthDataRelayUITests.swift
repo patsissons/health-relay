@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 
 /// End to end on a simulator: allow Health, seed a week, add a pipeline,
@@ -462,6 +463,47 @@ final class HealthDataRelayUITests: XCTestCase {
         snap("connected-accounts")
     }
 
+    /// The server over real TLS, with its own certificate. The runner is the client:
+    /// it trusts that certificate by its fingerprint, as a real tool would be told to.
+    func testMCPServerOverTLS() async throws {
+        await MainActor.run {
+            tab("Settings")
+            app.buttons["server"].tap()
+            app.switches["mcp-toggle"].switches.firstMatch.tap()
+            allowHealth()
+        }
+        let (token, fingerprint, port): (String, String, Int) = await MainActor.run {
+            XCTAssertTrue(app.staticTexts["server-running"].waitForExistence(timeout: 20) || app.descendants(matching: .any)["server-running"].waitForExistence(timeout: 5))
+            app.buttons["mcp-show-token"].tap()
+            let tokenText = app.staticTexts["mcp-token"]
+            XCTAssertTrue(tokenText.waitForExistence(timeout: 5))
+            let print = app.staticTexts["mcp-fingerprint"]
+            XCTAssertTrue(print.waitForExistence(timeout: 5))
+            snap("server")
+            return (tokenText.label, print.label, 8443)
+        }
+        let delegate = PinningDelegate(fingerprint: fingerprint)
+        let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
+
+        func post(_ bearer: String) async throws -> (Int, Data) {
+            var r = URLRequest(url: URL(string: "https://127.0.0.1:\(port)/mcp")!)
+            r.httpMethod = "POST"
+            r.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
+            r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            r.httpBody = Data(#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#.utf8)
+            let (data, response) = try await session.data(for: r)
+            return ((response as? HTTPURLResponse)?.statusCode ?? 0, data)
+        }
+        let (refused, _) = try await post("wrong")
+        XCTAssertEqual(refused, 401)
+        let (status, data) = try await post(token)
+        XCTAssertEqual(status, 200)
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let tools = (json?["result"] as? [String: Any])?["tools"] as? [[String: Any]]
+        XCTAssertEqual(tools?.count, 8)
+        XCTAssertTrue(delegate.checked, "the certificate was presented and matched")
+    }
+
     /// Answers iOS's calendar permission alert, which runs in another process.
     private func allowCalendar() {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
@@ -609,5 +651,23 @@ final class HealthDataRelayUITests: XCTestCase {
         if let dir = env["SCREENSHOTS"] {
             try? shot.pngRepresentation.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name).png"))
         }
+    }
+}
+
+/// Trusts one certificate, by the SHA-256 fingerprint the app shows.
+private final class PinningDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
+    let fingerprint: String
+    private(set) var checked = false
+
+    init(fingerprint: String) {
+        self.fingerprint = fingerprint
+    }
+
+    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        guard let trust = challenge.protectionSpace.serverTrust, let chain = SecTrustCopyCertificateChain(trust) as? [SecCertificate], let leaf = chain.first else { return (.cancelAuthenticationChallenge, nil) }
+        let digest = SHA256.hash(data: SecCertificateCopyData(leaf) as Data).map { String(format: "%02X", $0) }.joined(separator: ":")
+        guard digest == fingerprint else { return (.cancelAuthenticationChallenge, nil) }
+        checked = true
+        return (.useCredential, URLCredential(trust: trust))
     }
 }
