@@ -179,32 +179,39 @@ final class HealthDataRelayUITests: XCTestCase {
     /// The phone's name is kept when the field is left any way, not only by Return.
     /// Reads a seeded day through the pipelines' Extract path on real HealthKit,
     /// after asking for every type a pipeline can read (a type iOS refuses
-    /// would crash here). Yesterday's steps are the seed's: 13 hours of 460
-    /// plus 20 per hour of the day, times however many seeds this simulator
-    /// has had, since seeding adds and other tests seed too.
+    /// would crash here). Seeding adds to what's there, and what a past seed left
+    /// for yesterday depends on the date it ran, so this checks the difference: 13 hours
+    /// of 460 plus 20 per hour of the day.
     func testValuesByDayMatchWhatWasWritten() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-reset"]
-        app.launch()
+        func yesterdaysSteps() -> Int {
+            tab("Settings")
+            app.buttons["Values by day"].tap()
+            let allow = app.buttons["allow-every-type"]
+            XCTAssertTrue(allow.waitForExistence(timeout: 5))
+            allow.tap()
+            allowHealth()
+            app.buttons["Yesterday"].tap()
+            let steps = app.descendants(matching: .any)["value-Steps"]
+            // No row at all is no steps at all, once the list has loaded.
+            XCTAssertTrue(steps.waitForExistence(timeout: 15) || text("No data").waitForExistence(timeout: 15))
+            // The label reads "Steps, 28,860 count".
+            let total = steps.exists ? Int(steps.label.replacingOccurrences(of: "Steps, ", with: "").prefix { $0.isNumber || $0 == "," }.filter(\.isNumber)) ?? 0 : 0
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+            return total
+        }
+        let before = yesterdaysSteps()
         tab("Seed")
         app.buttons["seed"].tap()
         allowHealth()
         XCTAssertTrue(app.staticTexts["seed-status"].waitForExistence(timeout: 60))
         XCTAssertTrue(app.staticTexts["seed-status"].label.hasPrefix("Wrote"), app.staticTexts["seed-status"].label)
-
+        let after = yesterdaysSteps()
+        XCTAssertEqual(after - before, 9620)
+        snap("values-by-day")
         tab("Settings")
         app.buttons["Values by day"].tap()
-        app.buttons["allow-every-type"].tap()
-        allowHealth()
         app.buttons["Yesterday"].tap()
-        let steps = app.descendants(matching: .any)["value-Steps"]
-        XCTAssertTrue(steps.waitForExistence(timeout: 30))
-        snap("values-by-day")
-        // The label reads "Steps, 28,860 count".
-        let shown = steps.label.replacingOccurrences(of: "Steps, ", with: "")
-        let total = Int(shown.prefix { $0.isNumber || $0 == "," }.filter(\.isNumber)) ?? 0
-        XCTAssertTrue(total > 0 && total % 9620 == 0, "steps read as \(steps.label)")
-        XCTAssertTrue(app.descendants(matching: .any)["value-Heart Rate"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["value-Heart Rate"].waitForExistence(timeout: 15))
     }
 
     /// A template pipeline from the editor to the receiver: a real read, a real
@@ -502,6 +509,33 @@ final class HealthDataRelayUITests: XCTestCase {
         let tools = (json?["result"] as? [String: Any])?["tools"] as? [[String: Any]]
         XCTAssertEqual(tools?.count, 8)
         XCTAssertTrue(delegate.checked, "the certificate was presented and matched")
+    }
+
+    /// A link fills the editor for review, and one asking for the old format says no.
+    func testPipelineLinks() throws {
+        open("healthdatarelay://pipeline?url=https%3A%2F%2Fexample.com%2Fin&name=From%20a%20link&datatype=workouts&exportversion=v1")
+        XCTAssertTrue(text("older v1 format").waitForExistence(timeout: 10))
+        snap("link-refused")
+        app.buttons["OK"].tap()
+
+        open("healthdatarelay://pipeline?url=https%3A%2F%2Fexample.com%2Fin&name=From%20a%20link&datatype=workouts&period=yesterday&format=csv")
+        XCTAssertTrue(app.buttons["save-pipeline"].waitForExistence(timeout: 10))
+        XCTAssertTrue(text("From a link").exists)
+        XCTAssertTrue(text("example.com").exists)
+        XCTAssertEqual(app.textFields["pipeline-name"].value as? String, "From a link")
+        XCTAssertTrue(text("own columns").exists)
+        snap("link-review")
+    }
+
+    /// Charts draws a seeded metric.
+    func testCharts() throws {
+        tab("Seed")
+        app.buttons["seed"].tap()
+        allowHealth()
+        XCTAssertTrue(app.staticTexts["seed-status"].waitForExistence(timeout: 60))
+        tab("Charts")
+        XCTAssertTrue(text("Average").waitForExistence(timeout: 30))
+        snap("charts")
     }
 
     /// Answers iOS's calendar permission alert, which runs in another process.

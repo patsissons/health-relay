@@ -408,6 +408,8 @@ struct PipelineEditor: View {
     let existing: Destination?
     /// Settings from a setup link, laid over the existing ones for review.
     var setup: SetupLink? = nil
+    /// A whole pipeline's settings from a link, to review.
+    var link: PipelineLink? = nil
 
     private enum TriggerKind: Hashable { case manual, health, schedule, time }
 
@@ -590,8 +592,31 @@ struct PipelineEditor: View {
                 }
             }
 
-            if existing == nil && setup == nil {
+            if let link {
                 Section {
+                    Label {
+                        Text("Check this is where you want your Health data to go: this pipeline sends to **\(URL(string: link.web.url)?.host() ?? link.web.url)**.")
+                    } icon: {
+                        Image(systemName: "link")
+                    }
+                    .font(.subheadline)
+                    ForEach(link.notes, id: \.self) { note in
+                        Text(note).font(.footnote).foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("From a link")
+                }
+            }
+
+            if existing == nil && setup == nil && link == nil {
+                Section {
+                    Button {
+                        if let text = UIPasteboard.general.string { model.importLink(text) } else { model.linkProblem = "There's nothing copied." }
+                        dismiss()
+                    } label: {
+                        Label("Use a copied link", systemImage: "doc.on.clipboard")
+                    }
+                    .accessibilityIdentifier("paste-link")
                     Menu {
                         ForEach(PipelinePreset.all()) { preset in
                             Button {
@@ -1006,6 +1031,24 @@ struct PipelineEditor: View {
                     timeOfDay = Calendar.current.date(bySettingHour: time.hour, minute: time.minute, second: 0, of: .now) ?? .now
                     weekdays = Set(time.weekdays ?? Array(1...7))
                 default: kind = .manual
+                }
+            }
+            if let link {
+                name = link.name
+                template = choices.first { $0.ref == .builtIn(link.template) }
+                spec = link.extract
+                targetKind = .web
+                url = link.web.url
+                headers = link.web.headers
+                automationHeaders = link.web.automationHeaders
+                token = link.token ?? ""
+                switch link.trigger {
+                case .every(let schedule):
+                    kind = .schedule
+                    count = schedule.count
+                    unit = schedule.unit
+                default:
+                    kind = .manual
                 }
             }
             if let setup {

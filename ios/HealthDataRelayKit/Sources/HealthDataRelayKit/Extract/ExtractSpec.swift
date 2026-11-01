@@ -21,6 +21,8 @@ public struct ExtractSpec: Codable, Sendable, Equatable {
         public var series: Bool
         /// Only these workouts, by id: a single-workout export.
         public var ids: [String]?
+        /// Only these activity types, by HealthKit's number.
+        public var activityCodes: [Int]?
 
         public init(activityTypes: [String]? = nil, routes: Bool = true, series: Bool = true, ids: [String]? = nil) {
             self.ids = ids

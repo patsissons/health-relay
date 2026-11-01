@@ -160,6 +160,19 @@ It's remade if the phone's address changes, and nothing else can reach the key i
 **TCP** is newline-separated JSON-RPC with the same tools, for tools that can't use MCP. It has no password and no encryption, so it's off by default, separate
 from MCP, and the screen says plainly that anyone on the network can read Health data while it's on.
 
+## Links, Shortcuts, widgets and charts
+
+**Links.** `healthdatarelay://pipeline?url=...&name=...` carries a whole pipeline's settings: `format`, `enabled`, `datatype`, `period`, `interval`, `aggregatedata`,
+`aggregatesleep`, `exportversion`, `batchrequests`, `syncinterval`, `syncquantity`, `headers`, `requesttimeout`, `metrics`, `includeroutes`, `includeworkoutmetadata`,
+`workoutsmetadatainterval`, `workouttypes`, `notifyonupdate` and `notifywhenrun`, case-insensitive. A link copied from another export app using `com.HealthExport://automation`
+can be pasted in the same way; the app doesn't register that scheme. A link only fills the editor, for the user to check and save. What can't be carried over is listed
+there. `exportversion=v1` is refused, since a receiver asking for v1 can't read v2.
+
+**Shortcuts** can run a pipeline and read today's value of a metric. **Widgets** show today's values and how pipelines stand, from a small file the app writes to a shared
+folder, so they work without reading Health. A widget's run button holds a random key private to the phone, so no other app can trigger a send with a link.
+
+**Charts** shows a metric over 7 days to a year. It reads when asked, and nothing is sent.
+
 ## Notifications and activity
 
 A pipeline can notify when it fails, when it finishes, and, if scheduled, a few minutes after it's

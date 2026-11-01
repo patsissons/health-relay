@@ -482,12 +482,13 @@ public struct WorkoutPager: Sendable {
     public mutating func next() async throws -> [WorkoutDetail]? {
         let wanted = extractor.spec.workouts.activityTypes
         let only = extractor.spec.workouts.ids
+        let codes = extractor.spec.workouts.activityCodes
         while let range = remaining.first {
             let page = try await extractor.store.workoutPage(in: range, after: cursor, limit: Self.limit)
             cursor = page.next
             if page.next == nil { remaining.removeFirst() }
             var kept: [WorkoutDetail] = []
-            for w in page.items where seen.insert(w.id).inserted && (wanted?.contains(w.activityType) ?? true) && (only?.contains(w.id) ?? true) {
+            for w in page.items where seen.insert(w.id).inserted && (wanted?.contains(w.activityType) ?? true) && (only?.contains(w.id) ?? true) && (codes?.contains(w.activityTypeCode) ?? true) {
                 kept.append(w)
             }
             if !kept.isEmpty { return kept }

@@ -117,3 +117,11 @@ long-lived access token, and each metric appears as a sensor.
 
 **Settings › Server** can answer tools on your own network while the app is open. Turn on **MCP server**, then give your tool the address, the token and
 the certificate. It can then ask for your metrics, workouts, symptoms and other Health data by date. Nothing goes anywhere else.
+
+## Shortcuts, widgets and links
+
+**Shortcuts** has **Run Pipeline** and **Get Today's Health Value**, so an automation can run a pipeline at a place or time you choose. The **Today** and **Pipelines**
+widgets show today's values and how your pipelines stand, with a button to run a manual one.
+
+A link can set up a whole pipeline: `healthdatarelay://pipeline?url=...&name=...`. If you already have a link from another health export app, copy it and tap **Use a copied link** when
+adding a pipeline. Either way you see the settings and where the data would go before saving.

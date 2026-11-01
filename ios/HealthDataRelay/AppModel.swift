@@ -1,6 +1,7 @@
 import BackgroundTasks
 import HealthKit
 import UserNotifications
+import WidgetKit
 import HealthDataRelayKit
 import Observation
 import SwiftUI
@@ -9,6 +10,9 @@ import SwiftUI
 /// the app knows (Health authorization, per-type recency).
 @MainActor @Observable
 final class AppModel {
+    /// One per process: a Shortcut can start the app with no screen at all.
+    static let shared = AppModel()
+
     static let refreshTask = "com.patsissons.healthdatarelay.refresh"
     static let processingTask = "com.patsissons.healthdatarelay.processing"
 
@@ -160,7 +164,7 @@ final class AppModel {
         return out
     }
 
-    private static func text(_ point: MetricPoint, unit: String) -> String {
+    static func text(_ point: MetricPoint, unit: String) -> String {
         func n(_ value: Double?) -> String { (value ?? 0).formatted(.number.precision(.fractionLength(0...1))) }
         if let night = point.sleep { return "\(n(night.totalSleep)) hr" }
         if let systolic = point.systolic { return "\(n(systolic))/\(n(point.diastolic)) \(unit)" }
@@ -230,6 +234,7 @@ final class AppModel {
         await server.start()
         await engine.syncIfStale()
         await applyBackgroundPlan()
+        await updateWidgets()
     }
 
     func leftForeground() {
@@ -272,6 +277,89 @@ final class AppModel {
         content.title = notice.title
         content.body = notice.body
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+    }
+
+    // MARK: Shortcuts and widgets
+
+    func pipelines() async -> [Pipeline] { await engine.snapshot.pipelines }
+
+    /// Runs a pipeline for a Shortcut and says how it went.
+    func runForShortcut(_ id: UUID) async -> String {
+        let report = await engine.run(id)
+        await applyBackgroundPlan()
+        let lane = await engine.snapshot.pipelines.first { $0.id == id }?.lane
+        if let attention = lane?.attention { return "Needs attention: \(attention)" }
+        if report.failed > 0 { return "It didn't finish: \(lane?.lastError ?? "it will retry")" }
+        return "Finished"
+    }
+
+    /// Today's value, for a Shortcut or a widget.
+    func todayText(metric name: String) async -> String? {
+        guard let metric = MetricCatalog.metric(named: name) else { return nil }
+        let calendar = Calendar.local()
+        let today = Day(.now, calendar: calendar).interval(in: calendar)
+        let extractor = Extractor(store: health, spec: ExtractSpec(grouping: .days), calendar: calendar, ranges: [today])
+        var pager = extractor.points(of: metric)
+        guard let point = try? await pager.next()?.first else { return nil }
+        return Self.text(point, unit: pager.unitLabel)
+    }
+
+    /// Part of each widget's link that proves it came from here.
+    private var runKey: String {
+        let id = UUID(uuidString: "5E7E1000-0000-4000-8000-000000000003")!
+        let tokens = KeychainTokenStore()
+        if let key = tokens.token(for: id) { return key }
+        let key = UUID().uuidString
+        tokens.setToken(key, for: id)
+        return key
+    }
+
+    /// Everything a widget shows, for it to read while the app is away.
+    func updateWidgets() async {
+        guard WidgetSnapshot.sharedFile != nil else { return }
+        var values: [WidgetSnapshot.Value] = []
+        for name in WidgetSnapshot.metricNames {
+            guard let metric = MetricCatalog.metric(named: name), let text = await todayText(metric: name) else { continue }
+            values.append(.init(name: name, title: metric.title, text: text))
+        }
+        let key = runKey
+        let rows = await engine.snapshot.pipelines.map { p -> WidgetSnapshot.PipelineRow in
+            var next: Date?
+            if case .next(let date) = p.timing(now: .now) { next = date }
+            let manual = p.trigger == .manual && p.extract.range != .askAtRun
+            return .init(id: p.id, name: p.name, state: p.lane.attention != nil ? "Needs attention" : (p.lane.lastSuccess == nil ? "Hasn't run yet" : "Last run finished"),
+                         needsAttention: p.lane.attention != nil, nextRun: next, lastSuccess: p.lane.lastSuccess,
+                         runLink: manual ? RunLink(pipeline: p.id, key: key).url : nil)
+        }
+        WidgetSnapshot(updatedAt: .now, pipelines: rows, values: values).write()
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    // MARK: Charts
+
+    func chartPoints(metric name: String, days: Int) async -> [ChartPoint] {
+        guard let metric = MetricCatalog.metric(named: name) else { return [] }
+        let calendar = Calendar.local()
+        let today = Day(.now, calendar: calendar)
+        let range = DateInterval(start: today.adding(1 - days).start(in: calendar), end: .now)
+        let grouping: TimeGrouping = days > 120 ? .weeks : .days
+        var pager = Extractor(store: health, spec: ExtractSpec(grouping: grouping), calendar: calendar, ranges: [range]).points(of: metric)
+        let units = pager.unitLabel
+        var out: [ChartPoint] = []
+        while let page = try? await pager.next() {
+            for p in page {
+                if let night = p.sleep {
+                    out.append(ChartPoint(date: p.date, value: night.totalSleep, units: units))
+                } else if let avg = p.avg {
+                    out.append(ChartPoint(date: p.date, value: avg, low: p.min, high: p.max, units: units))
+                } else if let qty = p.qty {
+                    out.append(ChartPoint(date: p.date, value: qty, units: units))
+                } else if let systolic = p.systolic {
+                    out.append(ChartPoint(date: p.date, value: systolic, low: p.diastolic, high: systolic, units: units))
+                }
+            }
+        }
+        return out
     }
 
     // MARK: Accounts
@@ -441,7 +529,41 @@ final class AppModel {
 
     /// A setup link opens the editor filled in, for an existing destination
     /// with the same URL if there is one; nothing is saved until the user does.
+    /// A pipeline link waiting for the user to review and save.
+    var pipelineLink: PipelineLinkDraft?
+    var linkProblem: String?
+
+    struct PipelineLinkDraft: Identifiable {
+        let id = UUID()
+        let link: PipelineLink
+    }
+
+    /// A link pasted into the app, including one copied from another export app.
+    func importLink(_ text: String) {
+        guard let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)), PipelineLink.matches(url) else {
+            linkProblem = PipelineLink.Failure.notALink.description
+            return
+        }
+        openPipelineLink(url)
+    }
+
+    private func openPipelineLink(_ url: URL) {
+        do {
+            pipelineLink = PipelineLinkDraft(link: try PipelineLink.parse(url))
+        } catch {
+            linkProblem = String(describing: error)
+        }
+    }
+
     func open(_ url: URL) async {
+        if PipelineLink.matches(url) {
+            openPipelineLink(url)
+            return
+        }
+        if let link = RunLink(url) {
+            if link.key == runKey { await run(link.pipeline) }
+            return
+        }
         guard let link = SetupLink(url) else { badLink = true; return }
         // From the engine, not `snapshot`: a link can be what launched the app.
         let existing = await engine.snapshot.destinations.map(\.destination).first {
