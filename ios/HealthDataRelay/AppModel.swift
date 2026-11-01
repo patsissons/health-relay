@@ -27,6 +27,7 @@ final class AppModel {
     private let files: FileStore
     let uploader: BackgroundUploader
     private(set) var customTemplates: [CustomTemplate] = []
+    private(set) var accounts: [ConnectedAccount] = []
     /// A setup link waiting for the user to review and save.
     var setup: PendingSetup?
     var badLink = false
@@ -61,7 +62,8 @@ final class AppModel {
             queries: health,
             notify: { AppModel.post($0) },
             uploader: uploader,
-            calendars: LiveCalendarStore()))
+            calendars: LiveCalendarStore(),
+            oauth: { AppModel.oauth($0) }))
         let engine = engine
         Task { [weak self] in
             await engine.observe { snapshot in
@@ -261,6 +263,36 @@ final class AppModel {
         content.title = notice.title
         content.body = notice.body
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+    }
+
+    // MARK: Accounts
+
+    /// Sign-in details from the build's settings. Nil where it has none.
+    nonisolated static func oauth(_ provider: ConnectedAccount.Provider) -> OAuthProvider? {
+        func id(_ key: String) -> String? {
+            let value = Bundle.main.object(forInfoDictionaryKey: key) as? String
+            return value?.isEmpty == false ? value : nil
+        }
+        switch provider {
+        case .dropbox: return id("HDRDropboxClientID").map(OAuthProvider.dropbox)
+        case .google: return id("HDRGoogleClientID").map(OAuthProvider.google)
+        }
+    }
+
+    func connect(_ provider: ConnectedAccount.Provider) async throws {
+        guard let config = AppModel.oauth(provider) else { return }
+        let tokens = try await OAuthSignIn.run(config)
+        await engine.addAccount(ConnectedAccount(provider: provider, name: provider.title), tokens: tokens)
+        accounts = await engine.accounts
+    }
+
+    func disconnect(_ id: UUID) async {
+        await engine.removeAccount(id)
+        accounts = await engine.accounts
+    }
+
+    func reloadAccounts() async {
+        accounts = await engine.accounts
     }
 
     /// Calendars a pipeline could write to, asking for access first.

@@ -31,11 +31,16 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>healthdatarelay</string>
+				<string>$(HDR_GOOGLE_REDIRECT_SCHEME)</string>
 			</array>
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>HDRDropboxClientID</key>
+	<string>$(HDR_DROPBOX_CLIENT_ID)</string>
+	<key>HDRGoogleClientID</key>
+	<string>$(HDR_GOOGLE_CLIENT_ID)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>

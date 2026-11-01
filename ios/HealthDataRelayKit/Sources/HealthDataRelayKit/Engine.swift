@@ -103,6 +103,8 @@ public actor Engine {
         /// Uploads large parts with iOS's background transfer service.
         public var uploader: BackgroundUploader?
         public var calendars: CalendarStore?
+        /// Sign-in details for cloud accounts. Nil where no client is set up.
+        public var oauth: @Sendable (ConnectedAccount.Provider) -> OAuthProvider?
 
         public init(store: HealthStore, files: FileStore, tokens: TokenStore,
                     device: @escaping @Sendable (String) -> Device,
@@ -115,7 +117,9 @@ public actor Engine {
                     templateSource: @escaping @Sendable (TemplateRef) -> String? = Engine.builtInSource,
                     notify: @escaping @Sendable (PipelineNotice) -> Void = { _ in },
                     uploader: BackgroundUploader? = nil,
-                    calendars: CalendarStore? = nil) {
+                    calendars: CalendarStore? = nil,
+                    oauth: @escaping @Sendable (ConnectedAccount.Provider) -> OAuthProvider? = { _ in nil }) {
+            self.oauth = oauth
             self.calendars = calendars
             self.notify = notify
             self.uploader = uploader
@@ -158,7 +162,7 @@ public actor Engine {
         case .web(let web): WebTransport(target: web, context: context)
         case .mqtt(let mqtt): MQTTTransport(target: mqtt, password: context.token)
         // The engine makes these itself: they need its file store or calendars.
-        case .share, .calendar, .email: RefusingTransport()
+        case .share, .calendar, .email, .file: RefusingTransport()
         }
     }
 
@@ -455,6 +459,8 @@ public actor Engine {
             // Nothing to reach out to: rendering it was the test.
             if case .share = target { return Delivery(status: nil, verdict: .accepted, message: "The template works") }
             if case .email(let email) = target, case .compose = email.method { return Delivery(status: nil, verdict: .accepted, message: "The template works") }
+            // A test file in someone's cloud would be a nuisance.
+            if case .file = target { return Delivery(status: nil, verdict: .accepted, message: "The template works") }
             // An empty message on a real topic would reach whatever's listening,
             // and a calendar needs no test event: writing the shape was the test.
             if case .calendar = target {
@@ -467,12 +473,33 @@ public actor Engine {
         }
     }
 
+    private func accountTokens(_ id: UUID, _ provider: ConnectedAccount.Provider) -> AccountTokens {
+        AccountTokens(store: env.tokens, account: id, provider: env.oauth(provider), now: env.now)
+    }
+
+    // MARK: Accounts
+
+    public var accounts: [ConnectedAccount] { state.accounts ?? [] }
+
+    public func addAccount(_ account: ConnectedAccount, tokens: OAuthTokens) {
+        AccountTokens(store: env.tokens, account: account.id, provider: nil).save(tokens)
+        state.accounts = (state.accounts ?? []) + [account]
+        changed()
+    }
+
+    /// Removes an account's sign-in. Pipelines using it say so on their cards.
+    public func removeAccount(_ id: UUID) {
+        env.tokens.setToken(nil, for: id)
+        state.accounts?.removeAll { $0.id == id }
+        changed()
+    }
+
     static func addressTemplate(_ target: LoadTarget) -> String? {
         switch target {
         case .web(let web): web.url
         case .mqtt(let mqtt): mqtt.topic
         case .email(let email): email.subject
-        case .share, .calendar: nil
+        case .share, .calendar, .file: nil
         }
     }
 
@@ -482,6 +509,17 @@ public actor Engine {
             // Composing takes a person: it's ready to share, and they're told.
             if case .compose = email.method { return ShareTransport(files: env.files, context: context) }
             return EmailTransport(target: email, files: env.files, context: context)
+        }
+        if case .file(let file) = target {
+            switch file.location {
+            case .folder(let bookmark, _):
+                return FolderTransport(bookmark: bookmark, overwrite: file.overwrite)
+            case .dropbox(let account, let path):
+                return DropboxTransport(path: path, overwrite: file.overwrite, tokens: accountTokens(account, .dropbox))
+            case .googleDrive(let account, let folder, let sheets):
+                return GoogleDriveTransport(folderName: folder, sheets: sheets, overwrite: file.overwrite, tokens: accountTokens(account, .google),
+                                            folderCache: env.files.pipelineFile(context.pipelineID, "drive-folder.txt"))
+            }
         }
         if case .calendar(let calendar) = target, let store = env.calendars {
             return CalendarTransport(target: calendar, store: store, keysFile: env.files.pipelineFile(context.pipelineID, "calendar-keys.json"))

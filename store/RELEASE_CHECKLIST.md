@@ -32,6 +32,12 @@ holder.
 - [ ] `MARKETING_VERSION` from 0.1 to 1.0. `device.app` in every push changes
       with it.
 
+## Cloud accounts (human, for the build that ships them)
+
+- [ ] OAuth clients for Dropbox and Google Drive, set in `ios/Local.xcconfig`, tried against the real services.
+      Both are written and tested against simulated servers only. Google may require app verification
+      for `drive.file` at scale.
+
 ## Site
 
 - [ ] Privacy policy hosted publicly, covering what the app reads, that it has

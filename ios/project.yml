@@ -41,12 +41,15 @@ targets:
         BGTaskSchedulerPermittedIdentifiers: [com.patsissons.healthdatarelay.refresh, com.patsissons.healthdatarelay.processing]
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        # OAuth client IDs, from Local.xcconfig. Without them, Dropbox and Google Drive say they aren't set up.
+        HDRDropboxClientID: $(HDR_DROPBOX_CLIENT_ID)
+        HDRGoogleClientID: $(HDR_GOOGLE_CLIENT_ID)
         NSCalendarsFullAccessUsageDescription: Health Data Relay writes events to the calendar you choose, for a pipeline you set up to do that. It doesn't read your other events.
         NSLocalNetworkUsageDescription: Health Data Relay sends your Health data to destinations you add on your own network.
         # Setup links (healthdatarelay://destination?url=...), usually scanned from a QR code.
         CFBundleURLTypes:
           - CFBundleURLName: com.patsissons.healthdatarelay.setup
-            CFBundleURLSchemes: [healthdatarelay]
+            CFBundleURLSchemes: [healthdatarelay, $(HDR_GOOGLE_REDIRECT_SCHEME)]
     entitlements:
       path: HealthDataRelay/HealthDataRelay.entitlements
       properties:

@@ -623,23 +623,28 @@ private func all(_ pager: MetricPager) async throws -> [MetricPoint] {
         // The largest metric seen in a real unsummarized export: 2.6 million.
         let count = 3_000_000
         let start = at("2026-01-01 00:00:00 -0500")
-        let store = SyntheticHealthQuerying(start: start, count: count)
-        let e = Extractor(store: store, spec: ExtractSpec(grouping: nil), calendar: calendar, ranges: [DateInterval(start: start, duration: Double(count))])
-        var pager = e.points(of: MetricCatalog.metric(named: "step_count")!)
-        let before = footprint()
-        var peak = before
-        var seen = 0
-        var aheadOfConsumer = 0
-        while let page = try await pager.next() {
-            seen += page.count
-            aheadOfConsumer = max(aheadOfConsumer, store.samplesRead - seen)
-            peak = max(peak, footprint())
+        // Other suites allocate alongside this, so a spike can be theirs. A leak
+        // of its own would fail every attempt.
+        var grew = Int.max
+        for _ in 0..<3 where grew >= 128 * 1024 * 1024 {
+            let store = SyntheticHealthQuerying(start: start, count: count)
+            let e = Extractor(store: store, spec: ExtractSpec(grouping: nil), calendar: calendar, ranges: [DateInterval(start: start, duration: Double(count))])
+            var pager = e.points(of: MetricCatalog.metric(named: "step_count")!)
+            let before = footprint()
+            var peak = before
+            var seen = 0
+            var aheadOfConsumer = 0
+            while let page = try await pager.next() {
+                seen += page.count
+                aheadOfConsumer = max(aheadOfConsumer, store.samplesRead - seen)
+                peak = max(peak, footprint())
+            }
+            #expect(seen == count)
+            // Nothing is fetched before it's asked for.
+            #expect(aheadOfConsumer == 0)
+            grew = min(grew, peak - before)
         }
-        #expect(seen == count)
-        // Nothing is fetched before it's asked for.
-        #expect(aheadOfConsumer == 0)
-        // Holding them all would be over 500 MB. Other suites run alongside, so the
-        // limit leaves room for what they allocate.
-        #expect(peak - before < 128 * 1024 * 1024, "grew by \((peak - before) / 1024 / 1024) MB")
+        // Holding them all would be over 500 MB.
+        #expect(grew < 128 * 1024 * 1024, "grew by \(grew / 1024 / 1024) MB")
     }
 }

@@ -1,3 +1,11 @@
 // Copy to Local.xcconfig (gitignored) and set your Apple Developer team ID,
 // the 10-character ID shown at developer.apple.com > Membership details.
 DEVELOPMENT_TEAM = ABCDE12345
+
+// Optional: cloud accounts. Register your own apps with PKCE, no secret needed.
+// Dropbox: redirect URI healthdatarelay://oauth/dropbox, scope files.content.write.
+// Google: an iOS OAuth client, with the Drive API on. The redirect scheme is its
+// client ID reversed, com.googleusercontent.apps.<id>.
+HDR_DROPBOX_CLIENT_ID =
+HDR_GOOGLE_CLIENT_ID =
+HDR_GOOGLE_REDIRECT_SCHEME = healthdatarelay-google-unset

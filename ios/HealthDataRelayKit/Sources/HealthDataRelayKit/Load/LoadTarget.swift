@@ -9,6 +9,7 @@ public enum LoadTarget: Codable, Sendable, Equatable {
     case mqtt(MQTTTarget)
     case calendar(CalendarTarget)
     case email(EmailTarget)
+    case file(FileTarget)
 
     /// Its kind, for a diagnostics file: nothing identifying.
     public var kindName: String {
@@ -22,6 +23,12 @@ public enum LoadTarget: Codable, Sendable, Equatable {
             case .smtp: "email smtp"
             case .api(let api): "email \(api.rawValue)"
             case .compose: "email compose"
+            }
+        case .file(let file):
+            switch file.location {
+            case .folder: "file folder"
+            case .dropbox: "file dropbox"
+            case .googleDrive: "file google drive"
             }
         }
     }
@@ -39,6 +46,8 @@ public enum LoadTarget: Codable, Sendable, Equatable {
             calendar.calendarName
         case .email(let email):
             email.to.first ?? "Email"
+        case .file(let file):
+            file.summary
         }
     }
 }

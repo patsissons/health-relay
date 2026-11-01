@@ -47,6 +47,13 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    NavigationLink("Connected accounts") { AccountsView() }
+                        .accessibilityIdentifier("connected-accounts")
+                } footer: {
+                    Text("Cloud storage your pipelines can save to.")
+                }
+
+                Section {
                     Link("Privacy policy", destination: URL(string: "https://health-relay.lgtm.page/privacy/")!)
                 }
             }

@@ -105,6 +105,9 @@ under How much, asks for the dates each time you tap Run.
 
 ## Other destinations
 
+**Files or cloud** saves each part as a file in a folder you pick, Dropbox or Google Drive, which can turn a CSV into a Sheet. Connect a cloud account in
+**Settings › Connected accounts** first. iCloud Drive isn't supported yet, while Apple's rules on health data in iCloud are checked.
+
 A template pipeline can send to **Email**, from your own mail server or a service like Resend without you doing
 anything, or by composing in Mail, Gmail or another app with a tap. It can also send to **MQTT**, one message per part, or to **Calendar**, where each workout or other event
 stays one event however often it runs. For **Home Assistant**, start from its preset: fill in your server's address and a

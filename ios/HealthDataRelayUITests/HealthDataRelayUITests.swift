@@ -454,6 +454,14 @@ final class HealthDataRelayUITests: XCTestCase {
         snap("email-pipeline-ready")
     }
 
+    /// With no OAuth client in the build, a cloud service says so rather than failing.
+    func testCloudAccountsNeedSettingUp() throws {
+        tab("Settings")
+        app.buttons["connected-accounts"].tap()
+        XCTAssertTrue(text("Not set up in this build").waitForExistence(timeout: 5))
+        snap("connected-accounts")
+    }
+
     /// Answers iOS's calendar permission alert, which runs in another process.
     private func allowCalendar() {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")

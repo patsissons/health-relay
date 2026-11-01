@@ -27,6 +27,8 @@ public struct EngineState: Codable, Sendable {
     public var cursors: [UUID: ExtractCursor]?
     /// When to notify about each pipeline.
     public var notices: [UUID: PipelineNotices]?
+    /// Cloud accounts pipelines can save to.
+    public var accounts: [ConnectedAccount]?
 
     public init() {}
 }

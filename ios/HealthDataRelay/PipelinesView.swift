@@ -1,5 +1,6 @@
 import HealthDataRelayKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// One card per pipeline: what it does, how it stands, and when it runs.
 struct PipelinesView: View {
@@ -450,6 +451,28 @@ struct PipelineEditor: View {
     @State private var smtpSecurity = SMTPSettings.Security.startTLS
     @State private var smtpUser = ""
     @State private var mailAPI = MailAPI.resend
+    @State private var fileKind = FileKind.folder
+    @State private var folderBookmark: Data?
+    @State private var folderName = ""
+    @State private var choosingFolder = false
+    @State private var folderError: String?
+    @State private var cloudAccount: UUID?
+    @State private var cloudPath = "/Health"
+    @State private var driveFolder = "Health"
+    @State private var driveSheets = false
+    @State private var overwrite = true
+
+    private var cloudAccounts: [ConnectedAccount] {
+        model.accounts.filter { $0.provider == (fileKind == .dropbox ? .dropbox : .google) }
+    }
+
+    private var fileLocation: FileTarget.Location? {
+        switch fileKind {
+        case .folder: folderBookmark.map { .folder(bookmark: $0, name: folderName) }
+        case .dropbox: cloudAccount.map { .dropbox(account: $0, path: cloudPath) }
+        case .drive: cloudAccount.map { .googleDrive(account: $0, folderName: driveFolder, sheets: driveSheets) }
+        }
+    }
 
     private var emailRecipients: [String] {
         emailTo.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
@@ -464,7 +487,9 @@ struct PipelineEditor: View {
     }
 
     /// Where a template pipeline sends: the kinds of `LoadTarget`.
-    private enum TargetKind: Hashable { case web, share, mqtt, calendar, email }
+    private enum TargetKind: Hashable { case web, share, mqtt, calendar, email, file }
+
+    private enum FileKind: Hashable { case folder, dropbox, drive }
 
     private enum EmailKind: Hashable { case compose, smtp, api }
 
@@ -519,6 +544,7 @@ struct PipelineEditor: View {
         case .web: return targetURLIsValid
         case .share, .calendar: return true
         case .mqtt: return !mqttHost.trimmingCharacters(in: .whitespaces).isEmpty && !mqttTopic.isEmpty
+        case .file: return fileLocation != nil
         case .email:
             switch emailKind {
             case .compose: return true
@@ -613,6 +639,7 @@ struct PipelineEditor: View {
                         Text("MQTT").tag(TargetKind.mqtt)
                         Text("Calendar").tag(TargetKind.calendar)
                         Text("Email").tag(TargetKind.email)
+                        Text("Files or cloud").tag(TargetKind.file)
                     }
                     .accessibilityIdentifier("target-kind")
                 } header: {
@@ -655,6 +682,57 @@ struct PipelineEditor: View {
                     Toggle("Retain", isOn: $mqttRetain)
                 } footer: {
                     Text("Each part is one message. A topic can name its part, like health/{{ partition.key }}. The password is kept in the Keychain.")
+                }
+            }
+
+            if template != nil && targetKind == .file {
+                Section {
+                    Picker("Save to", selection: $fileKind) {
+                        Text("A folder").tag(FileKind.folder)
+                        Text("Dropbox").tag(FileKind.dropbox)
+                        Text("Google Drive").tag(FileKind.drive)
+                    }
+                    .accessibilityIdentifier("file-kind")
+                    .onChange(of: fileKind) { _, _ in cloudAccount = cloudAccounts.first?.id }
+                    if fileKind == .folder {
+                        Button(folderBookmark == nil ? "Choose a folder" : "Folder: \(folderName)") { choosingFolder = true }
+                            .accessibilityIdentifier("choose-folder")
+                        if let folderError { Text(folderError).font(.footnote).foregroundStyle(.red) }
+                    } else if cloudAccounts.isEmpty {
+                        Text("Connect an account in Settings first.").foregroundStyle(.secondary)
+                    } else {
+                        Picker("Account", selection: $cloudAccount) {
+                            ForEach(cloudAccounts) { Text($0.name).tag(UUID?.some($0.id)) }
+                        }
+                        if fileKind == .dropbox {
+                            TextField("Folder", text: $cloudPath)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                        } else {
+                            TextField("Folder", text: $driveFolder)
+                            Toggle("Turn CSV into a Google Sheet", isOn: $driveSheets)
+                        }
+                    }
+                    Toggle("Replace a file of the same name", isOn: $overwrite)
+                } footer: {
+                    Text("Each part is one file, named by the template. An interrupted cloud upload carries on where it stopped.")
+                }
+                .task { await model.reloadAccounts() }
+                .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder]) { result in
+                    do {
+                        let url = try result.get()
+                        let scoped = url.startAccessingSecurityScopedResource()
+                        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                        if !Features.iCloudDriveFolders, (try? url.resourceValues(forKeys: [.isUbiquitousItemKey]).isUbiquitousItem) == true {
+                            folderError = "iCloud Drive isn't supported for health data yet. Choose a folder on this iPhone or use another service."
+                            return
+                        }
+                        folderBookmark = try url.bookmarkData()
+                        folderName = url.lastPathComponent
+                        folderError = nil
+                    } catch {
+                        folderError = error.localizedDescription
+                    }
                 }
             }
 
@@ -872,6 +950,24 @@ struct PipelineEditor: View {
                     targetKind = .calendar
                     calendarID = calendar.calendarID
                     calendarName = calendar.calendarName
+                case .target(.file(let file)):
+                    targetKind = .file
+                    overwrite = file.overwrite
+                    switch file.location {
+                    case .folder(let bookmark, let name):
+                        fileKind = .folder
+                        folderBookmark = bookmark
+                        folderName = name
+                    case .dropbox(let account, let path):
+                        fileKind = .dropbox
+                        cloudAccount = account
+                        cloudPath = path
+                    case .googleDrive(let account, let folder, let sheets):
+                        fileKind = .drive
+                        cloudAccount = account
+                        driveFolder = folder
+                        driveSheets = sheets
+                    }
                 case .target(.email(let email)):
                     targetKind = .email
                     emailTo = email.to.joined(separator: ", ")
@@ -961,6 +1057,10 @@ struct PipelineEditor: View {
             case .calendar:
                 let title = calendars.first { $0.id == calendarID }?.title ?? calendarName
                 await model.save(existing: status?.destination, name: trimmed, target: .calendar(CalendarTarget(calendarID: calendarID, calendarName: title)), definition: definition, token: "", trigger: trigger)
+                return
+            case .file:
+                guard let location = fileLocation else { return }
+                await model.save(existing: status?.destination, name: trimmed, target: .file(FileTarget(location: location, overwrite: overwrite)), definition: definition, token: "", trigger: trigger)
                 return
             case .email:
                 let email = EmailTarget(method: emailMethod, from: emailFrom, to: emailRecipients, subject: emailSubject, body: emailBody)
