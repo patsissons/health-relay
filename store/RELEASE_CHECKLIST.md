@@ -19,6 +19,8 @@ holder.
       TestFlight only. **The bundle id is now locked.** App Store validation
       requires `NSHealthUpdateUsageDescription` even though Release never writes
       to Health, so Release carries a string saying so.
+- [x] Build 0.1 (4) uploaded, the first with the pipelines, widgets and the new
+      domain's privacy link.
 
 ## Code (M2 to M5)
 
