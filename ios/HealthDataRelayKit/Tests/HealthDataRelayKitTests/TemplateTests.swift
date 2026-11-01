@@ -101,6 +101,12 @@ private func render(_ source: String, format: OutputFormat = .text, data: JSON =
         #expect(try await render("| {{ a }} |", format: .markdown, data: ["a": "x|y\nz"]) == "| x\\|y z |")
     }
 
+    @Test func aCaptureIsEscapedOnlyWhenWritten() async throws {
+        let data: JSON = ["a": "x\"y", "b": "<b>"]
+        #expect(try await render("{% capture c %}{{ a }}!{% endcapture %}{{ c }}", format: .json, data: data) == #""x\"y!""#)
+        #expect(try await render("{% capture c %}{{ b }}{% endcapture %}{{ c }}", format: .html, data: data) == "&lt;b&gt;")
+    }
+
     @Test func invalidJSONFailsTheRun() async throws {
         for bad in ["{\"a\":1,}", "[1 2]", "{\"a\" 1}", "01", "{", "tru", "\"unterminated", "{\"a\":1}x", ""] {
             await #expect(throws: TemplateError.self, "\(bad)") { _ = try await render(bad, format: .json) }

@@ -505,7 +505,7 @@ public struct TemplateTransformer: Sendable {
             let name = try await filename(partition, globals: globals, timeZone: export.timeZone)
             let counted = CountingSink(try sink(partition, name))
             let renderer = TemplateRenderer(format: template.header.format, timeZone: export.timeZone, globals: globals, sink: counted, limits: limits)
-            try await renderer.run(template.body)
+            try await renderer.run(template.body, allowEmpty: template.header.skipEmpty)
             sinkIndex += 1
             // A workout with no route has no file, for one.
             if template.header.skipEmpty && renderer.dataRows == 0 { continue }

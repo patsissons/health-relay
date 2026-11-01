@@ -162,7 +162,8 @@ struct ArtifactRunner: Sendable {
                 artifact.parts[i].delivered = true
                 files.updateArtifact(artifact, pipeline: id)
                 await access.update { $0.record(entry) }
-                if !artifact.isDelivered { await pause(Pusher.spacing) }
+                // Parts can be many (one per metric), so a short pause between.
+                if !artifact.isDelivered { await pause(.milliseconds(200)) }
             case .authFailed:
                 await access.update { lane in
                     lane.record(entry)

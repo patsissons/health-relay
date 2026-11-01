@@ -384,6 +384,50 @@ final class HealthDataRelayUITests: XCTestCase {
         snap("activity")
     }
 
+    /// The Calendar preset writes seeded workouts to the real calendar, and
+    /// running again adds nothing, as the delivery log's count shows.
+    func testCalendarPipeline() throws {
+        tab("Seed")
+        app.buttons["seed"].tap()
+        allowHealth()
+        XCTAssertTrue(app.staticTexts["seed-status"].waitForExistence(timeout: 60))
+
+        tab("Pipelines")
+        app.buttons["add-pipeline"].tap()
+        XCTAssertTrue(app.buttons["preset"].waitForExistence(timeout: 5))
+        app.buttons["preset"].tap()
+        // A menu item's label includes its note.
+        let preset = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Workouts on my calendar'")).firstMatch
+        XCTAssertTrue(preset.waitForExistence(timeout: 5))
+        preset.tap()
+        allowCalendar()
+        snap("calendar-pipeline-new")
+        app.buttons["save-pipeline"].tap()
+        allowHealth()
+        XCTAssertTrue(app.buttons["save-pipeline"].waitForNonExistence(timeout: 10))
+
+        let card = app.staticTexts["Workouts on my calendar"].firstMatch
+        let runNow = app.buttons["run-now"]
+        for _ in 0..<3 where !runNow.exists {
+            card.tap()
+            _ = runNow.waitForExistence(timeout: 5)
+        }
+        runNow.tap()
+        allowCalendar()
+        XCTAssertTrue(text("Last run finished").waitForExistence(timeout: 120))
+        app.buttons["deliveries"].tap()
+        let wrote = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'in Calendar' OR label CONTAINS ' event'")).firstMatch
+        XCTAssertTrue(wrote.waitForExistence(timeout: 10))
+        snap("calendar-pipeline-ran")
+    }
+
+    /// Answers iOS's calendar permission alert, which runs in another process.
+    private func allowCalendar() {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let allow = springboard.alerts.buttons.matching(NSPredicate(format: "label CONTAINS 'Allow'")).firstMatch
+        if allow.waitForExistence(timeout: 4) { allow.tap() }
+    }
+
     func testPhoneNameIsSavedOnLeavingTheField() throws {
         tab("Settings")
         let field = app.textFields["device-name"]

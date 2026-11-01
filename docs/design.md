@@ -107,6 +107,20 @@ run** asks for dates when Run is tapped, so it needs a manual trigger.
 
 Each run of a template pipeline is recorded with its rows, size and file count, in **Run history**.
 
+## MQTT, Home Assistant and Calendar
+
+**MQTT** publishes each part as one message over MQTT 3.1.1, optionally with TLS, at QoS 0, 1 or 2, retained if
+asked. A part over 64 MB is refused, since a message is held in memory: split it with a partition.
+A refused password stops the pipeline, and an unreachable broker retries. The topic can be a template,
+rendered per part.
+
+**Home Assistant** isn't a target of its own. It's a preset: a web target at `/api/states/sensor.health_<metric>`
+with a long-lived token, and a template writing one sensor per metric that has data.
+
+**Calendar** writes events a template lists as `{"events": [{"key", "title", "start", "end", "allDay", "notes", "location"}]}`.
+Which event each key became is saved, so running again updates an event rather than adding one, and an event the
+user deleted is made again. Only events a pipeline made are touched.
+
 ## Notifications and activity
 
 A pipeline can notify when it fails, when it finishes, and, if scheduled, a few minutes after it's

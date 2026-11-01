@@ -102,6 +102,7 @@ public actor Engine {
         public var notify: @Sendable (PipelineNotice) -> Void
         /// Uploads large parts with iOS's background transfer service.
         public var uploader: BackgroundUploader?
+        public var calendars: CalendarStore?
 
         public init(store: HealthStore, files: FileStore, tokens: TokenStore,
                     device: @escaping @Sendable (String) -> Device,
@@ -113,7 +114,9 @@ public actor Engine {
                     makeTransport: @escaping @Sendable (LoadTarget, TransportContext) -> ArtifactTransport = Engine.standardTransport,
                     templateSource: @escaping @Sendable (TemplateRef) -> String? = Engine.builtInSource,
                     notify: @escaping @Sendable (PipelineNotice) -> Void = { _ in },
-                    uploader: BackgroundUploader? = nil) {
+                    uploader: BackgroundUploader? = nil,
+                    calendars: CalendarStore? = nil) {
+            self.calendars = calendars
             self.notify = notify
             self.uploader = uploader
             self.queries = queries
@@ -153,8 +156,9 @@ public actor Engine {
     public static let standardTransport: @Sendable (LoadTarget, TransportContext) -> ArtifactTransport = { target, context in
         switch target {
         case .web(let web): WebTransport(target: web, context: context)
-        // The engine makes this one itself: it needs the file store.
-        case .share: RefusingTransport()
+        case .mqtt(let mqtt): MQTTTransport(target: mqtt, password: context.token)
+        // The engine makes these itself: they need its file store or calendars.
+        case .share, .calendar: RefusingTransport()
         }
     }
 
@@ -450,6 +454,12 @@ public actor Engine {
             let context = TransportContext(pipelineID: id, pipelineName: d.name, extract: definition.extract, token: env.tokens.token(for: id))
             // Nothing to reach out to: rendering it was the test.
             if case .share = target { return Delivery(status: nil, verdict: .accepted, message: "The template works") }
+            // An empty message on a real topic would reach whatever's listening,
+            // and a calendar needs no test event: writing the shape was the test.
+            if case .calendar = target {
+                _ = try CalendarEvent.parse(try Data(contentsOf: file))
+                return Delivery(status: nil, verdict: .accepted, message: "The template works")
+            }
             return await transport(target, context).deliver(part: info, file: file, artifact: Artifact(createdAt: env.now(), days: [], rows: 0, parts: [info]))
         } catch {
             return Delivery(status: nil, verdict: .rejected, message: String(describing: error))
@@ -459,12 +469,16 @@ public actor Engine {
     static func addressTemplate(_ target: LoadTarget) -> String? {
         switch target {
         case .web(let web): web.url
-        case .share: nil
+        case .mqtt(let mqtt): mqtt.topic
+        case .share, .calendar: nil
         }
     }
 
     private func transport(_ target: LoadTarget, _ context: TransportContext) -> ArtifactTransport {
         if case .share = target { return ShareTransport(files: env.files, context: context) }
+        if case .calendar(let calendar) = target, let store = env.calendars {
+            return CalendarTransport(target: calendar, store: store, keysFile: env.files.pipelineFile(context.pipelineID, "calendar-keys.json"))
+        }
         if case .web(let web) = target, let uploader = env.uploader {
             return WebTransport(target: web, context: context, uploader: uploader, waitForUpload: limit == nil ? .seconds(600) : .seconds(15))
         }

@@ -425,9 +425,20 @@ struct PipelineEditor: View {
     @State private var multipart = false
     @State private var automationHeaders = true
     @State private var targetKind = TargetKind.web
+    @State private var mqttHost = ""
+    @State private var mqttPort = 1883
+    @State private var mqttTLS = false
+    @State private var mqttTopic = "health/{{ partition.key }}"
+    @State private var mqttClient = "health-data-relay"
+    @State private var mqttUser = ""
+    @State private var mqttQoS = 1
+    @State private var mqttRetain = false
+    @State private var calendarID: String?
+    @State private var calendarName = "Default calendar"
+    @State private var calendars: [(id: String, title: String)] = []
 
     /// Where a template pipeline sends: the kinds of `LoadTarget`.
-    private enum TargetKind: Hashable { case web, share }
+    private enum TargetKind: Hashable { case web, share, mqtt, calendar }
 
     private var choices: [TemplateLibrary.Entry] { model.library.entries() }
 
@@ -445,6 +456,16 @@ struct PipelineEditor: View {
         case .at(let time):
             kind = .time
             timeOfDay = Calendar.current.date(bySettingHour: time.hour, minute: time.minute, second: 0, of: .now) ?? .now
+        }
+        switch preset.target {
+        case .web(let web)?:
+            targetKind = .web
+            url = web.url
+            automationHeaders = web.automationHeaders
+        case .calendar?:
+            targetKind = .calendar
+        default:
+            break
         }
         if name.trimmingCharacters(in: .whitespaces).isEmpty { name = preset.name }
     }
@@ -466,7 +487,11 @@ struct PipelineEditor: View {
     private var isValid: Bool {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
         if template == nil { return endpoint != nil }
-        return targetKind == .web ? targetURLIsValid : true
+        switch targetKind {
+        case .web: return targetURLIsValid
+        case .share, .calendar: return true
+        case .mqtt: return !mqttHost.trimmingCharacters(in: .whitespaces).isEmpty && !mqttTopic.isEmpty
+        }
     }
 
     private var status: DestinationStatus? {
@@ -551,6 +576,8 @@ struct PipelineEditor: View {
                     Picker("Send to", selection: $targetKind) {
                         Text("Web").tag(TargetKind.web)
                         Text("Share sheet").tag(TargetKind.share)
+                        Text("MQTT").tag(TargetKind.mqtt)
+                        Text("Calendar").tag(TargetKind.calendar)
                     }
                     .accessibilityIdentifier("target-kind")
                 } header: {
@@ -559,6 +586,55 @@ struct PipelineEditor: View {
                     if targetKind == .share {
                         Text("Writes a file you send on yourself, or a ZIP when there are several.")
                     }
+                }
+            }
+
+            if template != nil && targetKind == .mqtt {
+                Section {
+                    TextField("Broker host", text: $mqttHost)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                        .accessibilityIdentifier("mqtt-host")
+                    Stepper("Port \(String(mqttPort))", value: $mqttPort, in: 1...65535)
+                    Toggle("Use TLS", isOn: $mqttTLS)
+                    TextField("Topic", text: $mqttTopic)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("mqtt-topic")
+                    TextField("Client ID", text: $mqttClient)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("Username (optional)", text: $mqttUser)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    SecureField("Password (optional)", text: $token)
+                        .textContentType(.oneTimeCode)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Picker("QoS", selection: $mqttQoS) {
+                        Text("0, at most once").tag(0)
+                        Text("1, at least once").tag(1)
+                        Text("2, exactly once").tag(2)
+                    }
+                    Toggle("Retain", isOn: $mqttRetain)
+                } footer: {
+                    Text("Each part is one message. A topic can name its part, like health/{{ partition.key }}. The password is kept in the Keychain.")
+                }
+            }
+
+            if template != nil && targetKind == .calendar {
+                Section {
+                    Picker("Calendar", selection: $calendarID) {
+                        Text("Default calendar").tag(String?.none)
+                        ForEach(calendars, id: \.id) { Text($0.title).tag(String?.some($0.id)) }
+                    }
+                    .accessibilityIdentifier("calendar-picker")
+                    .task {
+                        calendars = await model.writableCalendars()
+                    }
+                } footer: {
+                    Text("The template writes events with a key each. Running again updates them instead of adding more.")
                 }
             }
 
@@ -686,6 +762,20 @@ struct PipelineEditor: View {
                     if case .multipart = web.body { multipart = true }
                 case .target(.share):
                     targetKind = .share
+                case .target(.mqtt(let mqtt)):
+                    targetKind = .mqtt
+                    mqttHost = mqtt.host
+                    mqttPort = mqtt.port
+                    mqttTLS = mqtt.tls
+                    mqttTopic = mqtt.topic
+                    mqttClient = mqtt.clientID
+                    mqttUser = mqtt.username
+                    mqttQoS = mqtt.qos
+                    mqttRetain = mqtt.retain
+                case .target(.calendar(let calendar)):
+                    targetKind = .calendar
+                    calendarID = calendar.calendarID
+                    calendarName = calendar.calendarName
                 }
                 let pipeline = model.snapshot.pipelines.first { $0.id == existing.id }
                 if let definition = pipeline?.definition {
@@ -734,9 +824,20 @@ struct PipelineEditor: View {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         if let template {
             let definition = PipelineDefinition(extract: spec, template: template.ref, templateName: template.name)
-            if targetKind == .share {
+            switch targetKind {
+            case .share:
                 await model.save(existing: status?.destination, name: trimmed, target: .share, definition: definition, token: "", trigger: trigger)
                 return
+            case .mqtt:
+                let mqtt = MQTTTarget(host: mqttHost.trimmingCharacters(in: .whitespaces), port: mqttPort, tls: mqttTLS, topic: mqttTopic, clientID: mqttClient, username: mqttUser, qos: mqttQoS, retain: mqttRetain)
+                await model.save(existing: status?.destination, name: trimmed, target: .mqtt(mqtt), definition: definition, token: token, trigger: trigger)
+                return
+            case .calendar:
+                let title = calendars.first { $0.id == calendarID }?.title ?? calendarName
+                await model.save(existing: status?.destination, name: trimmed, target: .calendar(CalendarTarget(calendarID: calendarID, calendarName: title)), definition: definition, token: "", trigger: trigger)
+                return
+            case .web:
+                break
             }
             let web = WebTarget(url: url.trimmingCharacters(in: .whitespaces), method: method,
                                 headers: headers.filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty },

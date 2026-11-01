@@ -112,6 +112,13 @@ extension FileStore {
         try? FileManager.default.removeItem(at: artifactDir(pipeline, id))
     }
 
+    /// A file of a pipeline's own, kept until it's removed.
+    func pipelineFile(_ pipeline: UUID, _ name: String) -> URL {
+        let dir = root.appendingPathComponent("pipelines", isDirectory: true).appendingPathComponent(pipeline.uuidString, isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent(name)
+    }
+
     /// Removes everything a pipeline left on disk.
     public func removePipeline(_ pipeline: UUID) {
         try? FileManager.default.removeItem(at: root.appendingPathComponent("pipelines", isDirectory: true).appendingPathComponent(pipeline.uuidString, isDirectory: true))

@@ -60,7 +60,8 @@ final class AppModel {
             device: { Device(name: $0, model: model, os: os, app: app) },
             queries: health,
             notify: { AppModel.post($0) },
-            uploader: uploader))
+            uploader: uploader,
+            calendars: LiveCalendarStore()))
         let engine = engine
         Task { [weak self] in
             await engine.observe { snapshot in
@@ -260,6 +261,13 @@ final class AppModel {
         content.title = notice.title
         content.body = notice.body
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+    }
+
+    /// Calendars a pipeline could write to, asking for access first.
+    func writableCalendars() async -> [(id: String, title: String)] {
+        let store = LiveCalendarStore()
+        _ = try? await store.requestAccess()
+        return store.writableCalendars()
     }
 
     func notices(for id: UUID) async -> PipelineNotices { await engine.notices(for: id) }

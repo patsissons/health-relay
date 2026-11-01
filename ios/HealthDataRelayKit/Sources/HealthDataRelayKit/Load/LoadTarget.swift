@@ -6,12 +6,16 @@ public enum LoadTarget: Codable, Sendable, Equatable {
     case web(WebTarget)
     /// Written to a file for the user to send on with the share sheet.
     case share
+    case mqtt(MQTTTarget)
+    case calendar(CalendarTarget)
 
     /// Its kind, for a diagnostics file: nothing identifying.
     public var kindName: String {
         switch self {
         case .web: "web"
         case .share: "share"
+        case .mqtt: "mqtt"
+        case .calendar: "calendar"
         }
     }
 
@@ -22,6 +26,10 @@ public enum LoadTarget: Codable, Sendable, Equatable {
             URL(string: web.url)?.host() ?? web.url
         case .share:
             "Share sheet"
+        case .mqtt(let mqtt):
+            mqtt.host
+        case .calendar(let calendar):
+            calendar.calendarName
         }
     }
 }

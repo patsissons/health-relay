@@ -57,11 +57,12 @@ final class TemplateRenderer {
         buffer.reserveCapacity(Self.flushSize + 4096)
     }
 
-    func run(_ body: TemplateBody) async throws {
+    /// `allowEmpty`: a part with nothing in it is left out, so there's nothing to validate.
+    func run(_ body: TemplateBody, allowEmpty: Bool = false) async throws {
         do {
             _ = try await render(body)
             try flush()
-            try validator?.finish()
+            if !(allowEmpty && written == 0) { try validator?.finish() }
         } catch var error as TemplateError {
             if error.line == nil { error.line = currentLine }
             throw error
@@ -103,6 +104,11 @@ final class TemplateRenderer {
 
     /// `{{ value }}`, made safe for the format.
     private func write(_ value: TemplateValue) throws {
+        // A capture holds plain text, made safe when it's finally written.
+        if !captures.isEmpty {
+            try emit(text(value))
+            return
+        }
         switch format {
         case .json:
             var out = ""

@@ -8,6 +8,8 @@ public struct PipelinePreset: Identifiable, Sendable {
     public var template: String
     public var extract: ExtractSpec
     public var trigger: PipelineTrigger
+    /// What to fill in for the destination, when the job implies one.
+    public var target: LoadTarget?
 
     public var id: String { name }
 
@@ -33,6 +35,16 @@ public struct PipelinePreset: Identifiable, Sendable {
                            template: BuiltInTemplates.workoutRoutesGPX,
                            extract: ExtractSpec(sections: [.workouts], range: .sinceLastRun, grouping: .days),
                            trigger: .whenHealthChanges),
+            PipelinePreset(name: "Home Assistant sensors", note: "Each metric's latest value as a sensor, every hour. Use a long-lived access token.",
+                           template: BuiltInTemplates.homeAssistantStates,
+                           extract: ExtractSpec(sections: [.metrics], range: .today, grouping: .days),
+                           trigger: .every(Schedule(count: 1, unit: .hours, since: now)),
+                           target: .web(WebTarget(url: "http://homeassistant.local:8123/api/states/sensor.health_{{ partition.key }}", automationHeaders: false))),
+            PipelinePreset(name: "Workouts on my calendar", note: "Each new workout as a calendar event.",
+                           template: BuiltInTemplates.workoutsCalendar,
+                           extract: ExtractSpec(sections: [.workouts], range: .previousDays(7), grouping: .days),
+                           trigger: .every(Schedule(count: 1, unit: .days, since: now)),
+                           target: .calendar(CalendarTarget(calendarID: nil, calendarName: "Default calendar"))),
         ]
     }
 }

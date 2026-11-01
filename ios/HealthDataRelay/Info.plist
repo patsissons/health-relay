@@ -45,6 +45,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Health Data Relay writes events to the calendar you choose, for a pipeline you set up to do that. It doesn't read your other events.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Health Data Relay reads your Health data to send each day to the destinations you add. Nothing is sent anywhere else.</string>
 	<key>NSLocalNetworkUsageDescription</key>

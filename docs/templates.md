@@ -109,6 +109,9 @@ Writing `{{ point }}` or `{{ metric }}` in JSON writes the whole thing.
 There's no `include` or `render`. A template can't reach the network, other files
 or anything but the data it's given.
 
+`{% capture %}` holds plain text, escaped only when you write it, so it's safe to build a string
+from pieces in any format.
+
 **`forloop`:** `index`, `index0`, `first` and `last` always work. `length`, `rindex`
 and `rindex0` need the whole list in hand, so they're empty when walking Health data
 and work on lists you've made with a filter.
@@ -137,6 +140,11 @@ Only `nil` and `false` are false; `0` and `""` are true, as in all Liquid.
 `tz`, `days`, `stats`, `samples`, `workouts`, `summaries` and `ecg`, as in
 [schema.md](schema.md). The built-in Health Data Relay template writes it out field by field,
 so copying it is the way to customize that format.
+
+## Calendar events
+
+A template for a calendar destination writes JSON: `{"events": [...]}`, each with a `key` that stays the same for the
+same event, a `title` and a `start`, and optionally `end`, `allDay`, `notes` and `location`.
 
 ## Large data
 

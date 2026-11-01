@@ -102,3 +102,9 @@ you like. Several files arrive as a ZIP.
 
 For an export you repeat, make a pipeline with **Share sheet** as its destination. **Ask when run**,
 under How much, asks for the dates each time you tap Run.
+
+## Other destinations
+
+A template pipeline can send to **MQTT**, one message per part, or to **Calendar**, where each workout or other event
+stays one event however often it runs. For **Home Assistant**, start from its preset: fill in your server's address and a
+long-lived access token, and each metric appears as a sensor.
