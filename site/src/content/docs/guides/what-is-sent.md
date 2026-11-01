@@ -7,13 +7,14 @@ sidebar:
 
 ## Your data goes only where you send it
 
-Health Data Relay has no server, account or analytics. It reads Health on your
-phone and sends days to the destinations you added, and nothing anywhere
-else. Tokens stay in the iPhone's Keychain. The queue of unsent batches
+Health Data Relay has no server of ours, no account and no analytics. It reads Health
+on your phone and sends it to the destinations you added, and nothing anywhere
+else. If you turn on **Settings › Server**, tools on your own network that have its
+token can ask for your data while the app is open. Tokens stay in the iPhone's Keychain. The queue of unsent batches
 lives in the app's own storage and is not backed up.
 
 Never read or sent: clinical records, your name, your date of birth, or
-anything not listed below.
+anything not listed on this page.
 
 ## What a day carries
 
@@ -42,6 +43,9 @@ that day:
   Move goal.
 - **ECG recordings**: classification, average heart rate and the trace,
   averaged to 128 samples a second.
+
+A template pipeline or a tool using the server can also ask for state of mind, cycle
+tracking, medications and heart rate notifications, if you allow them.
 
 The exact format is [the schema](/reference/schema/). It uses Apple
 Health's own names, the same ones as in a Health export, so a receiver that

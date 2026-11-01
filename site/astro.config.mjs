@@ -12,7 +12,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'Health Data Relay',
-      description: 'Relay Apple Health to destinations you choose, exactly and incrementally, in one open schema.',
+      description: 'Relay Apple Health to destinations you choose, exactly and incrementally, in an open schema or any format you write.',
       logo: { src: './src/assets/logo.svg' },
       favicon: '/favicon.svg',
       customCss: ['./src/styles/custom.css'],
@@ -31,7 +31,7 @@ export default defineConfig({
         starlightLlmsTxt({
           projectName: 'Health Data Relay',
           description:
-            'Health Data Relay is an iPhone app that reads Apple Health and delivers each day, exactly and incrementally, to HTTP endpoints the user configures, as JSON in the open `apple-push/1` schema.',
+            'Health Data Relay is an iPhone app that reads Apple Health and delivers it to destinations the user configures: by default each day, exactly and incrementally, to an HTTP endpoint as JSON in the open `apple-push/1` schema, or through templates to other formats and destinations.',
           details: [
             '- A receiver is any HTTP endpoint that accepts `POST` of the schema and answers 2xx; an empty push (`days: []`) is the connection test.',
             '- Every day listed in `days` is described in full, so a receiver replaces what it holds for those days.',

@@ -18,7 +18,7 @@ If you have an automation link (`com.HealthExport://automation?...`), copy it. I
 | JSON v2 | The **Metrics JSON v2** template |
 | Markdown | The **Health Report Markdown** template |
 | GPX | The **Workout Routes GPX** template |
-| REST API | A web destination |
+| REST API | A **REST API** destination |
 | Time grouping | **Grouping** |
 | Summarize data off | Grouping: **Every sample** |
 | Default date range, Today, Yesterday | **How much** |
@@ -36,7 +36,7 @@ If you have an automation link (`com.HealthExport://automation?...`), copy it. I
 
 **You can change the output.** Every format is a template you can copy and edit.
 
-**iCloud Drive isn't supported yet**, while Apple's rules on health data in iCloud are checked. Use a folder, Dropbox or Google Drive.
+**iCloud Drive isn't supported yet**, while Apple's rules on health data in iCloud are checked. Use a folder on your iPhone or another destination.
 
 **It's free**, with no account.
 

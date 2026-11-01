@@ -8,13 +8,14 @@ sidebar:
 Everything Health Data Relay does is a **pipeline**, and each one shows as a card
 on the Pipelines tab.
 
-| Part | What it does | Today |
+| Part | What it does | Choices |
 |---|---|---|
-| **Transform** | The shape to send your days in | `Health Data Relay`, [the schema](/reference/schema/) |
-| **Destination** | Where they go | An HTTP endpoint |
-| **Trigger** | When it runs | Manual, when Health changes, or a schedule |
+| **Transform** | The shape to send your data in | `Health Data Relay`, [the schema](/reference/schema/), or a [template](#templates) |
+| **Destination** | Where it goes | A REST API, or with a template, [others](#other-destinations) |
+| **Trigger** | When it runs | Manual, when Health changes, every so often, or at a set time |
 
-Each run sends the days that changed, whole.
+With the Health Data Relay transform, each run sends the days that changed, whole. A template
+reads the range you set under **How much**.
 
 Add as many as you like. Each keeps track of its own days, so running one
 never runs another, and one failing never holds up another.
@@ -25,7 +26,7 @@ A **manual** card has a **Run** button. Tapping it runs that pipeline after
 anything already running, and shows **Queued** until its turn. It also skips any
 wait after a failed delivery, so it always tries.
 
-A **scheduled** card counts down: **Next run in 3h 12m 05s**. Scheduled cards
+A **scheduled** or **set time** card counts down: **Next run in 3h 12m 05s**. These cards
 don't need a Run button, but open one and **Run now** is there.
 
 iOS decides when background work happens, so a countdown can't promise a run
@@ -61,10 +62,10 @@ Tap a card for **Run now**, its parts and **Edit**, and:
 - **Deliveries**, newest first: the days in each batch, when, the HTTP status,
   and what the receiver said. The days still waiting are listed at the top.
 - **Test**, which sends an empty push and shows the answer.
-- **Re-send recent days**, which sends the last 7, 14 or 35 days again, replacing
+- **Re-send recent days**, on a pipeline that sends changed days, which sends the last 7, 14 or 35 days again, replacing
   what the destination holds for those days with what the phone has now. See
   [Re-send on demand](/guides/when-it-syncs/#re-send-on-demand).
-- **Paused** and **Remove pipeline**.
+- **Paused**, for a pipeline that runs by itself, and **Remove pipeline**.
 
 ## Settings
 
@@ -85,8 +86,8 @@ kind of data** there asks iOS for access to everything a pipeline can read.
 
 A pipeline's **Transform** can be a template, which decides what its output looks like. The
 **Templates** tab lists the ones that come with the app: Metrics JSON v2, Metrics CSV, Health
-Report Markdown, Health Summary HTML, Workout Routes GPX and Health Data Relay, which writes
-the native format out field by field.
+Report Markdown, Health Summary HTML, Workout Routes GPX, Home Assistant Sensors, Workouts on a
+Calendar and Health Data Relay, which writes the native format out field by field for you to copy.
 
 To write your own, tap **New template**, or copy a built-in and change it. **Preview** shows
 what it writes on sample data, or on your own last three days, and a mistake shows its line
@@ -97,19 +98,19 @@ lists everything a template can use.
 ## Exporting once
 
 **Export**, at the top of the Pipelines screen, makes a file from a template and some dates without
-setting up a pipeline. You can also choose a single workout. When it's done, share the file wherever
+setting up a pipeline. Choose a range like the last 24 hours or the last 30 days, or **Custom** for
+dates of your own. You can also choose a single workout. When it's done, share the file wherever
 you like. Several files arrive as a ZIP.
 
 For an export you repeat, make a pipeline with **Share sheet** as its destination. **Ask when run**,
-under How much, asks for the dates each time you tap Run.
+under How much, asks for the range each time you tap Run.
 
 ## Other destinations
 
-**Files or cloud** saves each part as a file in a folder you pick, Dropbox or Google Drive, which can turn a CSV into a Sheet. Connect a cloud account in
-**Settings › Connected accounts** first. iCloud Drive isn't supported yet, while Apple's rules on health data in iCloud are checked.
+**Files** saves each part as a file in a folder you pick. iCloud Drive isn't supported yet, while Apple's rules on health data in iCloud are checked.
 
-A template pipeline can send to **Email**, from your own mail server or a service like Resend without you doing
-anything, or by composing in Mail, Gmail or another app with a tap. It can also send to **MQTT**, one message per part, or to **Calendar**, where each workout or other event
+A template pipeline's **Type** can be **REST API**, with a choice of method, headers and file upload, or **Share sheet**. It can also send to **Email**, from your own mail server or a service like Resend without you doing
+anything, or by composing in Mail, Gmail or another app with a tap, to **MQTT**, one message per part, or to **Calendar**, where each workout or other event
 stays one event however often it runs. For **Home Assistant**, start from its preset: fill in your server's address and a
 long-lived access token, and each metric appears as a sensor.
 

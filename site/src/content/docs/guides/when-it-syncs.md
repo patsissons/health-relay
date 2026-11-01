@@ -5,8 +5,10 @@ sidebar:
   order: 1
 ---
 
-Every run is the same job, whatever started it: work out which days changed,
-read them in full from Health, and send them to the pipeline's destination.
+Every run of the Health Data Relay transform is the same job, whatever started it:
+work out which days changed, read them in full from Health, and send them to the
+pipeline's destination. A template pipeline reads the range you set under **How
+much** instead, such as since the last run, or the last 7 days.
 
 ## What starts a run
 
@@ -15,10 +17,13 @@ Each pipeline has its own trigger, set when you add or edit it.
 **Manual**, the default: only tapping **Run** or **Run now**. With every pipeline
 manual, Health Data Relay doesn't ask iOS to wake it at all.
 
-**A schedule**: every so many minutes, hours, days or weeks after its last run.
-It runs at the first chance once due: when iOS gives the app background time, or
+**A schedule**: every so many minutes, hours, days or weeks after its last run,
+or every so many seconds while the app is open. It runs at the first chance once due: when iOS gives the app background time, or
 straight away if the app is open. A failed delivery retries when its wait ends,
 without waiting for the next interval.
+
+**At a set time**: a time of day, on the days you choose. iOS decides when
+background work happens, so this is the earliest it can run.
 
 **When Health changes**: any of these.
 
@@ -48,6 +53,8 @@ unlock the phone in the morning. If a run comes while the data is locked, its
 card says so and the next run picks the days up; nothing is lost.
 
 ## Which days a run sends
+
+This is for the Health Data Relay transform, and templates set to **Days that changed**.
 
 - **Days with new data.** Health Data Relay tracks every type with a
   bookmark, so it knows exactly which days gained samples since the last

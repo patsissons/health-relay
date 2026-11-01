@@ -12,11 +12,9 @@ Everything the app does is a **pipeline**: **Extract** from the health store,
 when. Each shows as a card: a manual one has a Run button, a scheduled one
 counts down to its next run.
 
-v1 has one Extract (the days that changed, below), one Transform (the
-in-memory `Health Data Relay` format, the schema one batch at a time) and one Load
-(an HTTP endpoint, a *destination* below). The app shows only the last two
-parts, as the format and the destination; the Extract is not a choice yet.
-Triggers:
+The default Extract is the days that changed (below), its Transform the in-memory
+`Health Data Relay` format (the schema one batch at a time), and its Load an HTTP
+endpoint, a *destination* below. A template pipeline chooses each of them. Triggers:
 
 - **Manual**: runs only when the user taps Run. The default.
 - **When Health changes**: the triggers under [When to sync](#when-to-sync).
@@ -145,6 +143,8 @@ secret ships in the app. Their tokens live in the Keychain, and an expired one r
 A large cloud upload goes in 8 MB chunks with its position saved, so an interrupted one carries on where it stopped: Dropbox from the saved offset, and Google by
 asking how much arrived. Google Drive can turn a CSV into a Sheet as it uploads, and its `drive.file` access only reaches files this app made.
 
+Dropbox and Google Drive need OAuth clients built into the app. A build without them offers neither, and doesn't show Connected accounts.
+
 **iCloud Drive is off.** Guideline 5.1.3(ii) says apps "may not store personal health information in iCloud", so a folder there is refused until
 Apple has answered whether a file a user chose to put there themselves counts. `Features.iCloudDriveFolders` turns it on.
 
@@ -231,12 +231,11 @@ and a `session-id` is new per request.
 ## Destinations
 
 The app holds a list of destinations. Each has a type, a name, a paused
-flag and its own delivery state. v1 has one type, **HTTP endpoint**: a URL,
-an optional bearer token (kept in the platform's secure store, never in
-plain files), optional extra headers, and the schema as the body. A new
-type (a file in iCloud Drive, MQTT, a templated webhook) implements one
-operation, *deliver this batch and report the verdict*, and reuses
-everything below.
+flag and its own delivery state. The native push has one type, **HTTP endpoint**,
+shown as REST API: a URL, an optional bearer token (kept in the platform's secure
+store, never in plain files), optional extra headers, and the schema as the body.
+Template pipelines have the other types above, and each implements one operation,
+*deliver this and report the verdict*, and reuses everything below.
 
 The user sees the word "destination" and the destination's own name. The
 app never names a particular receiver.

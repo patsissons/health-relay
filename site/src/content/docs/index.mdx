@@ -1,9 +1,9 @@
 ---
 title: Your Apple Health data, delivered where you choose
-description: Health Data Relay reads Apple Health on your iPhone and delivers each day, exactly and incrementally, to destinations you choose, in one open schema.
+description: Health Data Relay reads Apple Health on your iPhone and delivers it to destinations you choose, in an open schema or any format you write.
 template: splash
 hero:
-  tagline: Health Data Relay reads Apple Health on your iPhone and sends each day to destinations you choose, such as your own server or a self-hosted dashboard. Every changed day is re-sent whole, deletions included, in one open, documented schema.
+  tagline: Health Data Relay reads Apple Health on your iPhone and sends it to destinations you choose, such as your own server, MQTT, email or a file. Every changed day can be re-sent whole, deletions included, in an open, documented schema or any format you write.
   image:
     file: ../../assets/logo.svg
   actions:
@@ -58,18 +58,20 @@ Health Data Relay does one job and does it exactly.
   </Card>
   <Card title="One open schema" icon="document">
     A single documented JSON format in Apple Health's own terms, versioned by name. If you read
-    `export.xml` today, you already know it. [Read the schema](/reference/schema/).
+    `export.xml` today, you already know it. [Read the schema](/reference/schema/). Need another
+    shape? [Templates](/reference/templates/) write JSON, CSV, Markdown, GPX or your own format.
   </Card>
   <Card title="Destinations you choose" icon="random">
-    Add any HTTP endpoint with an optional bearer token and headers: your server, a home lab
-    dashboard, a webhook. Each pipeline tracks its own days; one failing never holds up another.
+    Any HTTP endpoint with an optional bearer token and headers, or, with a template, MQTT, email,
+    your calendar, a folder or the share sheet. Each pipeline keeps its own place; one failing never
+    holds up another.
   </Card>
   <Card title="Private by design" icon="seti:lock">
-    No account, no backend, no analytics. Data goes only to your destinations, tokens live in the
-    Keychain, and nothing is read that the schema doesn't name.
+    No account, no backend, no analytics. Data goes only to your destinations and the tools you turn
+    on, and tokens live in the Keychain.
   </Card>
   <Card title="Runs when you say" icon="rocket">
-    Each pipeline runs when you tap Run, on a schedule, or when Health records something. Unsent
+    Each pipeline runs when you tap Run, on a schedule, at a set time, or when Health records something. Unsent
     batches stay on disk and retry with backoff.
   </Card>
   <Card title="Per-source detail" icon="list-format">

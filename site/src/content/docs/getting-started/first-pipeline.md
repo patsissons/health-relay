@@ -6,10 +6,11 @@ sidebar:
 ---
 
 A [**pipeline**](/guides/pipelines/) takes days from Health and delivers them
-to a destination, when you tap Run or on a schedule. Today a destination is any
-HTTP endpoint that accepts [the schema](/reference/schema/): your own server, a
-self-hosted dashboard, a home automation webhook. You can add as many as you
-like, and they never hold each other up.
+to a destination, when you tap Run or on a schedule. This page sets up the
+simplest one: any HTTP endpoint that accepts [the schema](/reference/schema/), such
+as your own server, a self-hosted dashboard or a home automation webhook. You can
+add as many as you like, and they never hold each other up. For other formats and
+destinations, see [Pipelines](/guides/pipelines/#templates).
 
 ## Scan a setup code
 
@@ -30,6 +31,8 @@ Receivers: the link format is in
 1. On the **Pipelines** tab, tap **+**.
 2. Fill in:
    - **Name**: anything; it's how the app labels the pipeline.
+   - **Transform**: leave it on **Health Data Relay**.
+   - **Type**, under Destination: **REST API**.
    - **URL**: the endpoint, `https://` (or `http://` on your local
      network).
    - **Bearer token**: if the receiver gave you one. It is sent as

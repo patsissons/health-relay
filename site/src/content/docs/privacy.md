@@ -3,7 +3,7 @@ title: Privacy policy
 description: What Health Data Relay reads, where it goes and how to stop it.
 ---
 
-**Health Data Relay has no server and no account. Its developer never receives your health data.**
+**Health Data Relay has no server of ours and no account. Its developer never receives your health data.**
 
 ## What the app reads
 
@@ -13,6 +13,8 @@ The Health data you allow in the iOS Health permission sheet. You can choose typ
 
 Only to the destinations you add. A destination is a web address, file location or other target you type in or scan from a setup link. The app sends your data there directly from your iPhone, and what happens to it after that is up to whoever runs that destination.
 
+If you turn on the server in Settings, tools on your own network that have its token can read your Health data while the app is open. That includes the optional Mac dashboard, which keeps a copy of what it last read on that Mac.
+
 The app includes no analytics, advertising or tracking.
 
 ## What's kept on your iPhone
@@ -21,8 +23,9 @@ The app includes no analytics, advertising or tracking.
 - Bearer tokens and other credentials, in the iOS Keychain
 - A log of recent deliveries
 - Output waiting to be sent, removed once delivered
+- A summary for the widgets: today's steps, energy, exercise, resting heart rate, sleep and weight, and how your pipelines stand
 
-None of this is included in iCloud or device backups, except for what iOS backs up in the Keychain.
+Apart from that summary, none of this is included in iCloud or device backups, except for what iOS backs up in the Keychain.
 
 ## Stopping and deleting
 
