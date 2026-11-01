@@ -76,3 +76,7 @@ more than one phone to the same place.
 the last 30 days and those without. iOS never tells an app which permissions you
 turned off, so a type you expected under **No data in 30 days** usually means its
 switch is off in Settings › Health › Data Access & Devices › Health Data Relay.
+
+**Values by day**: today's or yesterday's value for every metric, read the way a
+pipeline reads them, so you can compare them with the Health app. **Allow every
+kind of data** there asks iOS for access to everything a pipeline can read.

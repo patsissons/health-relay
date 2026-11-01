@@ -44,12 +44,6 @@ public struct Schedule: Codable, Sendable, Equatable {
     }
 }
 
-/// What a pipeline extracts from Health. Whole days that changed is the only
-/// kind so far.
-public enum ExtractSpec: Sendable, Equatable {
-    case changedDays
-}
-
 /// How a pipeline turns what it extracted into what it delivers. The native
 /// push is the schema (docs/schema.md), built in memory one batch at a time.
 public enum TransformSpec: Sendable, Equatable {

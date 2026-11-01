@@ -103,6 +103,46 @@ final class AppModel {
     // MARK: Running
 
     /// Runs one pipeline: after whatever is running, whatever its backoff says.
+    /// One metric's total or mean for a day.
+    struct DayValue: Identifiable {
+        let title: String
+        let text: String
+        var id: String { title }
+    }
+
+    /// Every metric's value for today or yesterday, read the way a pipeline
+    /// reads them. A failure reads as no data: iOS hides denied reads anyway.
+    func dayValues(yesterday: Bool) async -> [DayValue] {
+        let calendar = Calendar.local()
+        let today = Day(.now, calendar: calendar)
+        let day = (yesterday ? today.adding(-1) : today).interval(in: calendar)
+        let extractor = Extractor(store: health, spec: ExtractSpec(grouping: .days), calendar: calendar, ranges: [day])
+        var out: [DayValue] = []
+        for metric in MetricCatalog.metrics {
+            var pager = extractor.points(of: metric)
+            guard let point = try? await pager.next()?.first else { continue }
+            out.append(DayValue(title: metric.title, text: Self.text(point, unit: pager.unitLabel)))
+        }
+        return out
+    }
+
+    private static func text(_ point: MetricPoint, unit: String) -> String {
+        func n(_ value: Double?) -> String { (value ?? 0).formatted(.number.precision(.fractionLength(0...1))) }
+        if let night = point.sleep { return "\(n(night.totalSleep)) hr" }
+        if let systolic = point.systolic { return "\(n(systolic))/\(n(point.diastolic)) \(unit)" }
+        if let avg = point.avg { return "\(n(point.min))–\(n(point.max)), avg \(n(avg)) \(unit)" }
+        return "\(n(point.qty)) \(unit)"
+    }
+
+    /// Asks for every type a pipeline can read. Medications have a sheet of
+    /// their own, so a pipeline asks for those when it selects them.
+    func allowEveryType() async {
+        do {
+            try await health.requestAuthorization(types: MetricCatalog.allTypes, extras: [.routes, .heartbeats, .stateOfMind])
+        } catch {}
+        await refreshAuthorization()
+    }
+
     func run(_ id: UUID) async {
         await engine.run(id)
         await applyBackgroundPlan()

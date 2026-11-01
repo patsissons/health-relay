@@ -176,6 +176,36 @@ final class HealthDataRelayUITests: XCTestCase {
     /// page asking how much history to share, then Allow. Earlier systems:
     /// "Turn On All", then Allow.
     /// The phone's name is kept when the field is left any way, not only by Return.
+    /// Reads a seeded day through the pipelines' Extract path on real HealthKit,
+    /// after asking for every type a pipeline can read (a type iOS refuses
+    /// would crash here). Yesterday's steps are the seed's: 13 hours of 460
+    /// plus 20 per hour of the day, times however many seeds this simulator
+    /// has had, since seeding adds and other tests seed too.
+    func testValuesByDayMatchWhatWasWritten() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-reset"]
+        app.launch()
+        tab("Seed")
+        app.buttons["seed"].tap()
+        allowHealth()
+        XCTAssertTrue(app.staticTexts["seed-status"].waitForExistence(timeout: 60))
+        XCTAssertTrue(app.staticTexts["seed-status"].label.hasPrefix("Wrote"), app.staticTexts["seed-status"].label)
+
+        tab("Settings")
+        app.buttons["Values by day"].tap()
+        app.buttons["allow-every-type"].tap()
+        allowHealth()
+        app.buttons["Yesterday"].tap()
+        let steps = app.descendants(matching: .any)["value-Steps"]
+        XCTAssertTrue(steps.waitForExistence(timeout: 30))
+        snap("values-by-day")
+        // The label reads "Steps, 28,860 count".
+        let shown = steps.label.replacingOccurrences(of: "Steps, ", with: "")
+        let total = Int(shown.prefix { $0.isNumber || $0 == "," }.filter(\.isNumber)) ?? 0
+        XCTAssertTrue(total > 0 && total % 9620 == 0, "steps read as \(steps.label)")
+        XCTAssertTrue(app.descendants(matching: .any)["value-Heart Rate"].exists)
+    }
+
     func testPhoneNameIsSavedOnLeavingTheField() throws {
         tab("Settings")
         let field = app.textFields["device-name"]

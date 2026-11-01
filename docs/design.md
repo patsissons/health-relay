@@ -27,6 +27,41 @@ pipelines existed are its own. State saved before triggers existed needs no
 rewriting: a pipeline with no saved trigger is *when Health changes* if the old
 automatic sync setting was on, and manual if not.
 
+## What a pipeline can read
+
+An Extract says which **sections** it wants (metrics, workouts, symptoms, ECG,
+heart rate notifications, state of mind, cycle tracking, medications), which
+metrics, how much time, and how values combine. The catalog of metrics is wider
+than the native push's and separate from it, so adding a metric can't change
+what an existing receiver gets.
+
+**Range.** Whole days that changed; since the last run; today; yesterday; the
+previous N days; the last N days including today; a fixed range; or asked when
+Run is tapped. Since the last run also picks up older samples that arrived
+late, and a first one looks back 7 days.
+
+**Grouping.** Seconds to years, or automatic, which is minutes, or none, which
+writes each sample as it is. Only buckets with data produce a point. Buckets
+fall on local time: a day is midnight to midnight, so 23 or 25 hours when the
+clocks change, and each of those hours gets its own bucket. Weeks start on the
+phone's first day of the week. A range grows outward to whole buckets, so a
+point is never built from part of its bucket.
+
+**Sources.** Merged is Health's own combined value with overlaps removed, what
+the Health app shows, with `source` listing every contributor. Each source
+gives one point per source. Preferred takes the first listed source with data
+in each bucket and falls back to merged. Without grouping there are no buckets,
+so preferred keeps only the first listed source with any data.
+
+**Sleep.** Summarized sleep is one point per night, dated the morning it ended.
+A gap over 4 hours starts a new night. Several sources often record one night,
+so each moment counts once, for the most specific stage recorded: a stage, then
+plain asleep, then awake, then in bed. There's no sleep point below a day, and
+weeks and longer add their nights together.
+
+**Large reads.** Everything comes in pages of 2,000 samples and nothing past the
+current page is held, because one metric can run to millions of samples.
+
 ## Destinations
 
 The app holds a list of destinations. Each has a type, a name, a paused

@@ -19,6 +19,33 @@ import Testing
         }
     }
 
+    @Test func everyMetricUnitFitsItsType() {
+        for m in MetricCatalog.metrics {
+            for id in m.identifiers where !m.isCategory && LiveHealthStore.quantityType(id) != nil {
+                #expect(LiveHealthStore.resolve(id, unit: m.unit) != nil, "\(m.name) in \(m.unit)")
+                for choice in m.dimension.choices {
+                    #expect(LiveHealthStore.resolve(id, unit: choice) != nil, "\(m.name) in \(choice)")
+                }
+            }
+        }
+        for s in MetricCatalog.workoutStatistics where LiveHealthStore.quantityType(s.id) != nil {
+            #expect(LiveHealthStore.resolve(s.id, unit: s.unit) != nil, "\(s.name)")
+        }
+    }
+
+    @Test func everyMetricIsReadTheWayItsTypeAggregates() {
+        for m in MetricCatalog.metrics where !m.isCategory {
+            guard let qt = LiveHealthStore.quantityType(m.identifiers[0]) else { continue }
+            #expect((qt.aggregationStyle == .cumulative) == (m.form == .total), "\(m.name)")
+        }
+    }
+
+    @Test func everyEventAndMetricTypeExists() {
+        let missing = MetricCatalog.allTypes.filter { LiveHealthStore.sampleType($0) == nil }.map(\.id)
+        // On this SDK's simulator every identifier resolves except any newer than it.
+        #expect(missing.isEmpty, "\(missing)")
+    }
+
     @Test func theCoreTypesExist() {
         let missing = Catalog.allTypes.filter { LiveHealthStore.sampleType($0) == nil }.map(\.id)
         // Only identifiers newer than this OS may be missing.
