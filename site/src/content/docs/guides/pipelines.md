@@ -125,3 +125,8 @@ widgets show today's values and how your pipelines stand, with a button to run a
 
 A link can set up a whole pipeline: `healthdatarelay://pipeline?url=...&name=...`. If you already have a link from another health export app, copy it and tap **Use a copied link** when
 adding a pipeline. Either way you see the settings and where the data would go before saving.
+
+## On a Mac
+
+The Mac app shows your iPhone's metrics and workouts as charts. Turn on the MCP server in **Settings › Server** on your iPhone, then give the Mac app the address, token and certificate
+fingerprint. It reads while Health Data Relay is open on your iPhone and both are on the same network, and keeps the last data for when they aren't.

@@ -62,6 +62,32 @@ private func call(_ name: String, _ args: JSON = .object([:])) -> JSON {
         #expect(!text.contains("step_count"))
     }
 
+    @Test func routesAreLeftOutUnlessAsked() async throws {
+        func answer(_ args: JSON) async -> String {
+            guard case .array(let content)? = await handler().handle(call("workouts", args))?["result"]?["content"] else { return "" }
+            return content.first?["text"]?.stringValue ?? ""
+        }
+        let dates: [String: JSON] = ["start": "2026-10-20", "end": "2026-10-25"]
+        #expect(!(await answer(.object(dates))).contains("\"route\""))
+        var with = dates
+        with["routes"] = .bool(true)
+        #expect(await answer(.object(with)).contains("\"route\""))
+        #expect(!(await answer(.object(dates))).contains("\"splits\""))
+        var detail = dates
+        detail["detail"] = .bool(true)
+        #expect(await answer(.object(detail)).contains("\"splits\""))
+    }
+
+    /// Saved pipelines from an earlier version have to keep decoding, or the
+    /// whole state would be set aside.
+    @Test func aWorkoutOptionsSavedBeforeLaterFieldsStillDecodes() throws {
+        let old = Data(#"{"routes":true,"series":false}"#.utf8)
+        let options = try JSONDecoder().decode(ExtractSpec.WorkoutOptions.self, from: old)
+        #expect(options.routes)
+        #expect(options.summaryOnly == nil)
+        #expect(options.ids == nil)
+    }
+
     @Test func aBadArgumentIsAnAnswerAModelCanRead() async throws {
         for args: JSON in [["start": "yesterday"], ["start": "2026-10-25", "end": "2026-10-01"], ["grouping": "fortnights"]] {
             let reply = await handler().handle(call("health_metrics", args))

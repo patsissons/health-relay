@@ -28,7 +28,9 @@ struct WorkoutObject: TemplateObject {
 
     var keys: [String] {
         let w = workout
-        var out = ["id", "name", "start", "end", "duration", "source", "metadata", "activities"]
+        let summary = extractor.spec.workouts.summaryOnly == true
+        var out = ["id", "name", "start", "end", "duration", "source", "metadata"]
+        if !summary { out.append("activities") }
         if w.isIndoor != nil { out += ["isIndoor", "location"] }
         func has(_ stat: String) -> Bool { w.statistics[stat] != nil }
         if has("activeEnergy") { out += ["activeEnergyBurned", "totalEnergy"] }
@@ -43,8 +45,10 @@ struct WorkoutObject: TemplateObject {
         if w.humidity != nil { out.append("humidity") }
         if w.averageMETs != nil { out.append("intensity") }
         if w.estimatedEffort != nil { out.append("estimatedEffortScore") }
-        if !w.events.isEmpty { out += ["events", "segments"] }
-        if distanceStat != nil { out.append("splits") }
+        if !summary {
+            if !w.events.isEmpty { out += ["events", "segments"] }
+            if distanceStat != nil { out.append("splits") }
+        }
         if extractor.spec.workouts.series {
             out += ["heartRateData", "heartRateRecovery", "activeEnergy", "basalEnergy"]
             if has("stepCount") { out.append("stepCount") }

@@ -318,7 +318,7 @@ final class HealthDataRelayUITests: XCTestCase {
         allowHealth()
         let result = app.staticTexts["export-result"]
         let failure = app.staticTexts["export-failure"]
-        for _ in 0..<20 where !result.exists && !failure.exists {
+        for _ in 0..<40 where !result.exists && !failure.exists {
             app.swipeUp()
             sleep(2)
         }
@@ -541,6 +541,34 @@ final class HealthDataRelayUITests: XCTestCase {
         tab("Charts")
         XCTAssertTrue(text("Average").waitForExistence(timeout: 30))
         snap("charts")
+    }
+
+    /// tools/mac-check.sh's phone: seeds data, turns on the server and leaves it
+    /// running for the Mac's client until told to stop. Skipped otherwise.
+    func testServerForMacClient() throws {
+        guard let path = env["HDR_SERVER_FILE"] else { throw XCTSkip("Run by tools/mac-check.sh") }
+        tab("Seed")
+        app.buttons["seed"].tap()
+        allowHealth()
+        XCTAssertTrue(app.staticTexts["seed-status"].waitForExistence(timeout: 60))
+        tab("Settings")
+        app.buttons["server"].tap()
+        app.switches["mcp-toggle"].switches.firstMatch.tap()
+        allowHealth()
+        XCTAssertTrue(app.descendants(matching: .any)["server-running"].waitForExistence(timeout: 20))
+        app.buttons["mcp-show-token"].tap()
+        let token = app.staticTexts["mcp-token"]
+        let fingerprint = app.staticTexts["mcp-fingerprint"]
+        XCTAssertTrue(token.waitForExistence(timeout: 5))
+        XCTAssertTrue(fingerprint.waitForExistence(timeout: 5))
+        let info = ["url": "https://127.0.0.1:8443/mcp", "token": token.label, "fingerprint": fingerprint.label]
+        try JSONSerialization.data(withJSONObject: info).write(to: URL(fileURLWithPath: path))
+        // The app has to stay in front, or its server stops.
+        for _ in 0..<120 {
+            if FileManager.default.fileExists(atPath: path + ".stop") { return }
+            sleep(1)
+        }
+        XCTFail("The Mac's client never finished")
     }
 
     /// Answers iOS's calendar permission alert, which runs in another process.

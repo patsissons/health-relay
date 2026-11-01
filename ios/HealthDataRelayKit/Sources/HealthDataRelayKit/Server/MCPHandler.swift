@@ -84,6 +84,10 @@ public struct MCPHandler: Sendable {
             properties["metrics"] = ["type": "array", "items": ["type": "string"], "description": "Metric names like step_count. Defaults to all of them."]
             properties["grouping"] = ["type": "string", "enum": .array(TimeGrouping.allCases.map { .string($0.rawValue) }), "description": "How values combine. Defaults to days."]
         }
+        if tool.section == .workouts {
+            properties["routes"] = ["type": "boolean", "description": "Include each workout's GPS route, which is long. Defaults to false."]
+            properties["detail"] = ["type": "boolean", "description": "Include each workout's activities, events, segments and splits, which are long. Defaults to false."]
+        }
         return .object(["name": .string(tool.name), "description": .string(tool.about), "inputSchema": ["type": "object", "properties": .object(properties)]])
     }
 
@@ -103,6 +107,10 @@ public struct MCPHandler: Sendable {
         guard start <= end else { return problem("The start date is after the end date.") }
         var spec = ExtractSpec(sections: [tool.section], range: .fixed(DateInterval(start: start.start(in: calendar), end: end.adding(1).start(in: calendar))), grouping: .days)
         spec.workouts.series = false
+        spec.workouts.routes = false
+        if case .bool(true)? = args["routes"] { spec.workouts.routes = true }
+        spec.workouts.summaryOnly = true
+        if case .bool(true)? = args["detail"] { spec.workouts.summaryOnly = false }
         if case .array(let names)? = args["metrics"] { spec.metrics = .only(names.compactMap(\.stringValue)) }
         if let text = args["grouping"]?.stringValue {
             guard let grouping = TimeGrouping(rawValue: text) else { return problem("Grouping is one of \(TimeGrouping.allCases.map(\.rawValue).joined(separator: ", ")).") }

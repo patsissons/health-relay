@@ -23,6 +23,9 @@ public struct ExtractSpec: Codable, Sendable, Equatable {
         public var ids: [String]?
         /// Only these activity types, by HealthKit's number.
         public var activityCodes: [Int]?
+        /// Leaves out activities, events, segments and splits. Optional so a
+        /// spec saved before it existed still decodes.
+        public var summaryOnly: Bool?
 
         public init(activityTypes: [String]? = nil, routes: Bool = true, series: Bool = true, ids: [String]? = nil) {
             self.ids = ids

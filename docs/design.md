@@ -153,8 +153,8 @@ Apple has answered whether a file a user chose to put there themselves counts. `
 Off unless turned on, and running only while the app is open, since iOS suspends a backgrounded app.
 
 **MCP** answers over HTTPS on the phone's network, at `/mcp`, with one tool per section: `health_metrics`, `workouts`, `symptoms`, `ecg`,
-`heart_rate_notifications`, `state_of_mind`, `cycle_tracking` and `medications`. Each takes `start` and `end` dates, and metrics also take `metrics` and
-`grouping`. A tool returns the same JSON a pipeline writes, up to 8 MB. A request needs the bearer token the app shows, compared in constant
+`heart_rate_notifications`, `state_of_mind`, `cycle_tracking` and `medications`. Each takes `start` and `end` dates, metrics also take `metrics` and
+`grouping`, and workouts take `routes` and `detail`, both off by default because routes and splits are long. A tool returns the same JSON a pipeline writes, up to 8 MB. A request needs the bearer token the app shows, compared in constant
 time, and a wrong one gets 401. Its certificate is made on the phone and shown by fingerprint, because no public authority can vouch for a home network.
 It's remade if the phone's address changes, and nothing else can reach the key in the Keychain.
 
@@ -178,6 +178,15 @@ folder, so they work without reading Health. A widget's run button holds a rando
 
 **iPad** runs the same app, in every orientation, with pipeline cards in as many columns as fit. **Vision Pro** builds natively from the same code, with no widgets, since it has
 no Home Screen. Health data exists only where iOS keeps it, so what a Vision Pro can read depends on what visionOS shares with it.
+
+## The Mac dashboard
+
+A Mac has no Health data of its own, so the Mac app reads a phone's MCP server over the network, trusting its certificate only by fingerprint. It needs the address, token and
+fingerprint from the phone's Server screen, and works while the app is open on the phone and both are on one network. It shows metrics and workouts as charts and tables, and keeps
+the last data, so it opens with something when the phone isn't reachable, along with the reason it isn't newer. A wrong certificate is refused before the token is sent.
+
+**There's no iCloud sync.** Guideline 5.1.3(ii) says apps "may not store personal health information in iCloud", so the plan's flagged sync wasn't built: the network path does
+the job with no third party holding the data. It would also need a CloudKit container set up on the developer account.
 
 ## Notifications and activity
 

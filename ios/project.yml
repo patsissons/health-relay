@@ -5,6 +5,7 @@ name: HealthDataRelay
 options:
   deploymentTarget:
     iOS: "17.0"
+    macOS: "14.0"
   createIntermediateGroups: true
   developmentLanguage: en
 configFiles:
@@ -106,6 +107,36 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: YES
+  # The Mac dashboard. A Mac has no Health data: this reads a phone's server.
+  HealthDataRelayMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: HealthDataRelayMac
+    dependencies:
+      - package: HealthDataRelayKit
+    info:
+      path: HealthDataRelayMac/Info.plist
+      properties:
+        CFBundleDisplayName: Health Data Relay
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.healthcare-fitness
+        NSLocalNetworkUsageDescription: Health Data Relay reads Health data from your iPhone over your own network.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    entitlements:
+      path: HealthDataRelayMac/HealthDataRelayMac.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.patsissons.healthdatarelay.mac
+        PRODUCT_NAME: Health Data Relay
+        GENERATE_INFOPLIST_FILE: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Automatic
   HealthDataRelayUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -119,6 +150,14 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         CODE_SIGN_STYLE: Automatic
 schemes:
+  HealthDataRelayMac:
+    build:
+      targets:
+        HealthDataRelayMac: all
+    run:
+      config: Debug
+    archive:
+      config: Release
   HealthDataRelay:
     build:
       targets:
