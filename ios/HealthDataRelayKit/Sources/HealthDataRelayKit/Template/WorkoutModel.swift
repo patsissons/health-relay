@@ -235,49 +235,54 @@ struct WorkoutObject: TemplateObject {
         return max(0, active)
     }
 
-    /// One span's energy, distance, heart rate and pace.
-    private func metrics(from: Date, to: Date, active: Double) async throws -> TemplateValue {
+    /// Everything splits and segments are worked out from, read once per
+    /// workout: a query per split would take minutes for a month of runs.
+    private func samples() async throws -> WorkoutSamples {
+        let span = DateInterval(start: workout.start, end: workout.end)
+        func all(_ id: String, _ unit: String) async throws -> [DetailedQuantity] {
+            var out: [DetailedQuantity] = []
+            var cursor: PageCursor?
+            repeat {
+                let page = try await extractor.store.quantityPage(id, unit: unit, in: span, after: cursor, limit: Extractor.pageSize)
+                out += page.items
+                cursor = page.next
+            } while cursor != nil
+            // Other sources often record the same movement, and adding them
+            // would count it twice. A watch's workout has its own samples.
+            let own = out.filter { $0.source == workout.source }
+            return own.isEmpty ? out : own
+        }
+        let energyID = MetricCatalog.workoutStatistics.first { $0.name == "activeEnergy" }!.id
+        var distance: [DetailedQuantity] = []
+        if let id = distanceIdentifier?.id { distance = try await all(id, "m") }
+        return WorkoutSamples(energy: try await all(energyID, "kcal"), distance: distance, heartRate: try await all(WorkoutUnits.heartRateID, "count/min"))
+    }
+
+    /// One span's energy, distance, heart rate and pace, from what was read.
+    private func metrics(from: Date, to: Date, active: Double, samples: WorkoutSamples) -> TemplateValue {
         var out: [String: TemplateValue] = [:]
-        let span = DateInterval(start: from, end: max(to, from))
-        let plan = BucketPlan(anchor: from, step: .seconds(max(1, Int(span.duration.rounded(.up)))), span: span)
+        let span = max(0, to.timeIntervalSince(from))
         func covered(_ qty: Double, _ units: String) -> TemplateValue {
-            .object(DictionaryObject(["coveredDuration": .number(span.duration), "origin": .string("sampleOverlapEstimate"), "qty": .number(qty), "units": .string(units)]))
+            .object(DictionaryObject(["coveredDuration": .number(span), "origin": .string("sampleOverlapEstimate"), "qty": .number(qty), "units": .string(units)]))
         }
         func estimated(_ qty: Double, _ units: String) -> TemplateValue {
             .object(DictionaryObject(["origin": .string("activeTimeCalculation"), "qty": .number(qty), "units": .string(units)]))
         }
-        let energyID = MetricCatalog.workoutStatistics.first { $0.name == "activeEnergy" }!.id
-        let energy = try await extractor.store.buckets(BucketQuery(type: energyID, unit: "kcal", style: .sum, plan: plan)).compactMap(\.merged.sum).reduce(0, +)
-        out["activeEnergy"] = covered(energy, "kcal")
-        var metres = 0.0
-        if let distanceID = distanceIdentifier {
-            metres = try await extractor.store.buckets(BucketQuery(type: distanceID.id, unit: distanceID.unit, style: .sum, plan: plan)).compactMap(\.merged.sum).reduce(0, +)
-            if distanceID.unit == "km" { metres *= 1000 }
-        }
+        out["activeEnergy"] = covered(WorkoutSamples.overlap(samples.energy, from: from, to: to), "kcal")
+        let metres = WorkoutSamples.overlap(samples.distance, from: from, to: to)
         out["distance"] = covered(metres, "m")
-        if metres > 0 && active > 0 {
-            out["speed"] = estimated(metres / active, "m/s")
-            out["paceKilometre"] = estimated(active / (metres / 1000), "s/km")
-            out["paceMile"] = estimated(active / (metres / 1609.344), "s/mi")
-        } else {
-            out["speed"] = estimated(0, "m/s")
-            out["paceKilometre"] = estimated(0, "s/km")
-            out["paceMile"] = estimated(0, "s/mi")
-        }
-        var values: [Double] = []
-        var cursor: PageCursor?
-        repeat {
-            let page = try await extractor.store.quantityPage(WorkoutUnits.heartRateID, unit: "count/min", in: span, after: cursor, limit: Extractor.pageSize)
-            values += page.items.map(\.value)
-            cursor = page.next
-        } while cursor != nil
-        if !values.isEmpty {
+        let moving = metres > 0 && active > 0
+        out["speed"] = estimated(moving ? metres / active : 0, "m/s")
+        out["paceKilometre"] = estimated(moving ? active / (metres / 1000) : 0, "s/km")
+        out["paceMile"] = estimated(moving ? active / (metres / 1609.344) : 0, "s/mi")
+        let beats = samples.heartRate.filter { $0.start >= from && $0.start < to }.map(\.value)
+        if !beats.isEmpty {
             func summary(_ qty: Double) -> TemplateValue {
-                .object(DictionaryObject(["origin": .string("sampleSummary"), "qty": .number(qty), "sampleCount": .number(Double(values.count)), "units": .string("bpm")]))
+                .object(DictionaryObject(["origin": .string("sampleSummary"), "qty": .number(qty), "sampleCount": .number(Double(beats.count)), "units": .string("bpm")]))
             }
-            out["heartRateAverage"] = summary(values.reduce(0, +) / Double(values.count))
-            out["heartRateMaximum"] = summary(values.max()!)
-            out["heartRateMinimum"] = summary(values.min()!)
+            out["heartRateAverage"] = summary(beats.reduce(0, +) / Double(beats.count))
+            out["heartRateMaximum"] = summary(beats.max()!)
+            out["heartRateMinimum"] = summary(beats.min()!)
         }
         return .object(DictionaryObject(out))
     }
@@ -290,12 +295,14 @@ struct WorkoutObject: TemplateObject {
 
     private func segments() async throws -> [TemplateValue] {
         var out: [TemplateValue] = []
+        guard workout.events.contains(where: { $0.type == "segment" }) else { return [] }
+        let read = try await samples()
         for (i, e) in workout.events.enumerated() where e.type == "segment" {
             let active = activeDuration(from: e.start, to: e.end)
             out.append(.object(DictionaryObject([
                 "activeDuration": .number(active), "boundaryKind": .string("interval"), "boundaryOrigin": .string("recordedEvent"),
                 "elapsedDuration": .number(e.end.timeIntervalSince(e.start)), "end": .date(e.end), "eventIndex": .number(Double(i)),
-                "index": .number(Double(out.count)), "metrics": try await metrics(from: e.start, to: e.end, active: active), "start": .date(e.start),
+                "index": .number(Double(out.count)), "metrics": metrics(from: e.start, to: e.end, active: active, samples: read), "start": .date(e.start),
             ])))
         }
         return out
@@ -305,25 +312,18 @@ struct WorkoutObject: TemplateObject {
     /// cross each mark, assuming even progress within a sample.
     private func splits() async throws -> [TemplateValue] {
         guard let distance = distanceIdentifier else { return [] }
-        var samples: [DetailedQuantity] = []
-        var cursor: PageCursor?
-        let span = DateInterval(start: workout.start, end: workout.end)
-        repeat {
-            let page = try await extractor.store.quantityPage(distance.id, unit: "m", in: span, after: cursor, limit: Extractor.pageSize)
-            samples += page.items
-            cursor = page.next
-        } while cursor != nil
-        guard !samples.isEmpty else { return [] }
+        let read = try await samples()
+        guard !read.distance.isEmpty else { return [] }
         var out: [TemplateValue] = []
         for (target, units) in [(1000.0, "km"), (1609.344, "mi")] {
-            let marks = WorkoutSplits.marks(samples, every: target, workoutStart: workout.start, workoutEnd: workout.end)
+            let marks = WorkoutSplits.marks(read.distance, every: target, workoutStart: workout.start, workoutEnd: workout.end)
             var items: [TemplateValue] = []
             for (i, m) in marks.enumerated() {
                 let active = activeDuration(from: m.start, to: m.end)
                 items.append(.object(DictionaryObject([
                     "activeDuration": .number(active), "boundaryKind": .string("interval"), "boundaryOrigin": .string("distanceInterpolation"),
                     "elapsedDuration": .number(m.end.timeIntervalSince(m.start)), "end": .date(m.end), "index": .number(Double(i)), "isPartial": .bool(m.isPartial),
-                    "metrics": try await metrics(from: m.start, to: m.end, active: active), "start": .date(m.start),
+                    "metrics": metrics(from: m.start, to: m.end, active: active, samples: read), "start": .date(m.start),
                 ])))
             }
             out.append(.object(DictionaryObject([
@@ -332,6 +332,29 @@ struct WorkoutObject: TemplateObject {
             ])))
         }
         return out
+    }
+}
+
+/// A workout's samples, kept for working out its splits and segments.
+struct WorkoutSamples: Sendable {
+    var energy: [DetailedQuantity]
+    var distance: [DetailedQuantity]
+    var heartRate: [DetailedQuantity]
+
+    /// The total falling between two times, sharing each sample out evenly
+    /// across its length. An instant counts where it falls.
+    static func overlap(_ samples: [DetailedQuantity], from: Date, to: Date) -> Double {
+        var total = 0.0
+        for s in samples {
+            let length = s.end.timeIntervalSince(s.start)
+            if length <= 0 {
+                if s.start >= from && s.start < to { total += s.value }
+                continue
+            }
+            let shared = min(s.end, to).timeIntervalSince(max(s.start, from))
+            if shared > 0 { total += s.value * shared / length }
+        }
+        return total
     }
 }
 

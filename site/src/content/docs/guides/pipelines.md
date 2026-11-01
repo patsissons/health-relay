@@ -93,3 +93,12 @@ what it writes on sample data, or on your own last three days, and a mistake sho
 and column. Templates are text files, so you can share them and bring them in with
 **Import a file**. [The template reference](https://github.com/patsissons/health-relay/blob/main/docs/templates.md)
 lists everything a template can use.
+
+## Exporting once
+
+**Export**, at the top of the Pipelines screen, makes a file from a template and some dates without
+setting up a pipeline. You can also choose a single workout. When it's done, share the file wherever
+you like. Several files arrive as a ZIP.
+
+For an export you repeat, make a pipeline with **Share sheet** as its destination. **Ask when run**,
+under How much, asks for the dates each time you tap Run.

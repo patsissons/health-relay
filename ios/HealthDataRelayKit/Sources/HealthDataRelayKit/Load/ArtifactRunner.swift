@@ -191,6 +191,7 @@ struct ArtifactRunner: Sendable {
         await access.update { lane in
             lane.dirty.clear(covered.days, readAt: covered.createdAt)
             lane.succeeded(now: done)
+            lane.recordRun(RunRecord(at: done, parts: covered.parts.count, bytes: covered.bytes, rows: covered.rows))
         }
         return nil
     }

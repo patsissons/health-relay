@@ -3,6 +3,7 @@ import SwiftUI
 
 /// One card per pipeline: what it does, how it stands, and when it runs.
 struct PipelinesView: View {
+    @State private var exporting = false
     @Environment(AppModel.self) private var model
     @State private var adding = false
 
@@ -55,15 +56,28 @@ struct PipelinesView: View {
             }
             .navigationTitle("Pipelines")
             .toolbar {
-                Button {
-                    adding = true
-                } label: {
-                    Label("Add", systemImage: "plus")
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        exporting = true
+                    } label: {
+                        Label("Export", systemImage: "square.and.arrow.up")
+                    }
+                    .accessibilityIdentifier("export")
                 }
-                .accessibilityIdentifier("add-pipeline")
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        adding = true
+                    } label: {
+                        Label("Add", systemImage: "plus")
+                    }
+                    .accessibilityIdentifier("add-pipeline")
+                }
             }
             .sheet(isPresented: $adding) {
                 NavigationStack { PipelineEditor(existing: nil) }
+            }
+            .sheet(isPresented: $exporting) {
+                NavigationStack { ExportView() }
             }
         }
     }
@@ -173,6 +187,7 @@ struct PipelineStateRow: View {
 struct PipelineTimingRow: View {
     @Environment(AppModel.self) private var model
     let pipeline: Pipeline
+    @State private var asking = false
 
     var body: some View {
         switch pipeline.activity {
@@ -189,7 +204,11 @@ struct PipelineTimingRow: View {
         case .idle:
             if pipeline.trigger == .manual {
                 Button {
-                    Task { await model.run(pipeline.id) }
+                    if pipeline.extract.range == .askAtRun {
+                        asking = true
+                    } else {
+                        Task { await model.run(pipeline.id) }
+                    }
                 } label: {
                     Label("Run", systemImage: "play.fill")
                         .frame(maxWidth: .infinity)
@@ -197,6 +216,11 @@ struct PipelineTimingRow: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(pipeline.destination.paused || pipeline.lane.attention != nil)
                 .accessibilityIdentifier("run-\(pipeline.name)")
+                .sheet(isPresented: $asking) {
+                    RangePrompt(name: pipeline.name) { answer in
+                        Task { await model.run(pipeline.id, answer: answer) }
+                    }
+                }
             } else {
                 // A view of its own redrawing each second: nothing runs when
                 // this is off screen.
@@ -233,6 +257,7 @@ struct PipelineDetail: View {
     @State private var editing = false
     @State private var testing = false
     @State private var confirmRemove = false
+    @State private var asking = false
 
     private var pipeline: Pipeline? { model.snapshot.pipelines.first { $0.id == id } }
 
@@ -245,7 +270,11 @@ struct PipelineDetail: View {
                         SyncProgressRow(progress: progress)
                     }
                     Button {
-                        Task { await model.run(id) }
+                        if pipeline.extract.range == .askAtRun {
+                            asking = true
+                        } else {
+                            Task { await model.run(id) }
+                        }
                     } label: {
                         HStack {
                             Label("Run now", systemImage: "play.fill")
@@ -260,6 +289,12 @@ struct PipelineDetail: View {
                     if pipeline.trigger != .manual {
                         PipelineTimingRow(pipeline: pipeline)
                     }
+                    if case .target(.share) = pipeline.destination.kind, pipeline.activity == .idle, let file = model.latestExport(id) {
+                        ShareLink(item: file) {
+                            Label("Share \(file.lastPathComponent)", systemImage: "square.and.arrow.up")
+                        }
+                        .accessibilityIdentifier("share-export")
+                    }
                 }
 
                 Section("Pipeline") {
@@ -273,6 +308,10 @@ struct PipelineDetail: View {
                 Section {
                     NavigationLink("Deliveries") { DeliveryLogView(destinationID: id) }
                         .accessibilityIdentifier("deliveries")
+                    if pipeline.definition != nil {
+                        NavigationLink("Run history") { RunHistoryView(runs: pipeline.lane.runs ?? []) }
+                            .accessibilityIdentifier("run-history")
+                    }
                     Button {
                         testing = true
                         Task {
@@ -339,6 +378,11 @@ struct PipelineDetail: View {
         .sheet(isPresented: $editing) {
             NavigationStack { PipelineEditor(existing: pipeline?.destination) }
         }
+        .sheet(isPresented: $asking) {
+            RangePrompt(name: pipeline?.name ?? "") { answer in
+                Task { await model.run(id, answer: answer) }
+            }
+        }
         .confirmationDialog("Remove \(pipeline?.name ?? "")?", isPresented: $confirmRemove, titleVisibility: .visible) {
             Button("Remove", role: .destructive) {
                 Task {
@@ -375,6 +419,10 @@ struct PipelineEditor: View {
     @State private var method = WebTarget.Method.post
     @State private var multipart = false
     @State private var automationHeaders = true
+    @State private var targetKind = TargetKind.web
+
+    /// Where a template pipeline sends: the kinds of `LoadTarget`.
+    private enum TargetKind: Hashable { case web, share }
 
     private var choices: [TemplateLibrary.Entry] { model.library.entries() }
 
@@ -408,7 +456,9 @@ struct PipelineEditor: View {
     }
 
     private var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty && (template == nil ? endpoint != nil : targetURLIsValid)
+        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+        if template == nil { return endpoint != nil }
+        return targetKind == .web ? targetURLIsValid : true
     }
 
     private var status: DestinationStatus? {
@@ -483,6 +533,23 @@ struct PipelineEditor: View {
                 ExtractEditor(spec: $spec)
             }
 
+            if template != nil {
+                Section {
+                    Picker("Send to", selection: $targetKind) {
+                        Text("Web").tag(TargetKind.web)
+                        Text("Share sheet").tag(TargetKind.share)
+                    }
+                    .accessibilityIdentifier("target-kind")
+                } header: {
+                    Text("Destination")
+                } footer: {
+                    if targetKind == .share {
+                        Text("Writes a file you send on yourself, or a ZIP when there are several.")
+                    }
+                }
+            }
+
+            if template == nil || targetKind == .web {
             Section {
                 TextField("https://example.com/push", text: $url)
                     .keyboardType(.URL)
@@ -526,6 +593,8 @@ struct PipelineEditor: View {
                 Button("Add header") { headers.append(.init(name: "", value: "")) }
             } header: {
                 Text("Extra headers")
+            }
+
             }
 
             Section {
@@ -585,6 +654,8 @@ struct PipelineEditor: View {
                     method = web.method
                     automationHeaders = web.automationHeaders
                     if case .multipart = web.body { multipart = true }
+                case .target(.share):
+                    targetKind = .share
                 }
                 let pipeline = model.snapshot.pipelines.first { $0.id == existing.id }
                 if let definition = pipeline?.definition {
@@ -626,10 +697,14 @@ struct PipelineEditor: View {
     private func save() async {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         if let template {
+            let definition = PipelineDefinition(extract: spec, template: template.ref, templateName: template.name)
+            if targetKind == .share {
+                await model.save(existing: status?.destination, name: trimmed, target: .share, definition: definition, token: "", trigger: trigger)
+                return
+            }
             let web = WebTarget(url: url.trimmingCharacters(in: .whitespaces), method: method,
                                 headers: headers.filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty },
                                 body: multipart ? .multipart(field: "file") : .raw, automationHeaders: automationHeaders)
-            let definition = PipelineDefinition(extract: spec, template: template.ref, templateName: template.name)
             await model.save(existing: status?.destination, name: trimmed, target: .web(web), definition: definition, token: token, trigger: trigger)
             return
         }

@@ -19,10 +19,20 @@ public struct Lane: Codable, Sendable, Equatable {
     public var lastRun: Date?
     /// Why its last run could not finish, when that was not the destination's doing.
     public var lastMessage: String?
+    /// A template pipeline's finished runs, newest first. Optional so older
+    /// state.json still decodes.
+    public var runs: [RunRecord]?
 
     public init() {}
 
     public static let logLimit = 50
+
+    mutating func recordRun(_ run: RunRecord) {
+        var list = runs ?? []
+        list.insert(run, at: 0)
+        if list.count > Lane.logLimit { list.removeLast(list.count - Lane.logLimit) }
+        runs = list
+    }
 
     mutating func record(_ entry: LogEntry) {
         log.insert(entry, at: 0)
@@ -59,6 +69,22 @@ public struct QueuedBatch: Codable, Sendable, Equatable, Identifiable {
     public var readAt: Date
     public var bytes: Int
     public var records: Int
+}
+
+/// One finished run of a template pipeline.
+public struct RunRecord: Codable, Sendable, Equatable, Identifiable {
+    public var id = UUID()
+    public var at: Date
+    public var parts: Int
+    public var bytes: Int
+    public var rows: Int
+
+    public init(at: Date, parts: Int, bytes: Int, rows: Int) {
+        self.at = at
+        self.parts = parts
+        self.bytes = bytes
+        self.rows = rows
+    }
 }
 
 public struct LogEntry: Codable, Sendable, Equatable, Identifiable {

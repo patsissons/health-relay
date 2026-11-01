@@ -19,8 +19,11 @@ public struct ExtractSpec: Codable, Sendable, Equatable {
         public var routes: Bool
         /// Heart rate, energy and step series inside each workout.
         public var series: Bool
+        /// Only these workouts, by id: a single-workout export.
+        public var ids: [String]?
 
-        public init(activityTypes: [String]? = nil, routes: Bool = true, series: Bool = true) {
+        public init(activityTypes: [String]? = nil, routes: Bool = true, series: Bool = true, ids: [String]? = nil) {
+            self.ids = ids
             self.activityTypes = activityTypes
             self.routes = routes
             self.series = series

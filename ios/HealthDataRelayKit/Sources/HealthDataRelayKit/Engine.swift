@@ -142,6 +142,8 @@ public actor Engine {
     public static let standardTransport: @Sendable (LoadTarget, TransportContext) -> ArtifactTransport = { target, context in
         switch target {
         case .web(let web): WebTransport(target: web, context: context)
+        // The engine makes this one itself: it needs the file store.
+        case .share: RefusingTransport()
         }
     }
 
@@ -350,6 +352,7 @@ public actor Engine {
         state.cursors?[id] = nil
         env.files.removeLane(id)
         env.files.removePipeline(id)
+        try? FileManager.default.removeItem(at: env.files.exportFolder(id))
         env.tokens.setToken(nil, for: id)
         if state.destinations.isEmpty {
             state.anchors.reset()
@@ -411,7 +414,9 @@ public actor Engine {
             let address = try await run.destination(0, Engine.addressTemplate(target))
             let info = ArtifactPart(key: part.key, filename: part.filename, file: "test", contentType: part.contentType, bytes: part.bytes, destination: address)
             let context = TransportContext(pipelineID: id, pipelineName: d.name, extract: definition.extract, token: env.tokens.token(for: id))
-            return await env.makeTransport(target, context).deliver(part: info, file: file, artifact: Artifact(createdAt: env.now(), days: [], rows: 0, parts: [info]))
+            // Nothing to reach out to: rendering it was the test.
+            if case .share = target { return Delivery(status: nil, verdict: .accepted, message: "The template works") }
+            return await transport(target, context).deliver(part: info, file: file, artifact: Artifact(createdAt: env.now(), days: [], rows: 0, parts: [info]))
         } catch {
             return Delivery(status: nil, verdict: .rejected, message: String(describing: error))
         }
@@ -420,7 +425,13 @@ public actor Engine {
     static func addressTemplate(_ target: LoadTarget) -> String? {
         switch target {
         case .web(let web): web.url
+        case .share: nil
         }
+    }
+
+    private func transport(_ target: LoadTarget, _ context: TransportContext) -> ArtifactTransport {
+        if case .share = target { return ShareTransport(files: env.files, context: context) }
+        return env.makeTransport(target, context)
     }
 
     /// Marks the last `n` days dirty for every destination (they go with the next sync).
@@ -764,7 +775,7 @@ public actor Engine {
         }
         let context = TransportContext(pipelineID: id, pipelineName: name, extract: definition.extract, token: env.tokens.token(for: id))
         return await runner.run(id: id, definition: definition, template: template, destinationTemplate: Engine.addressTemplate(target), access: access, cursor: cursor, answer: answers[id], pushData: pushData,
-                                transport: env.makeTransport(target, context), progress: { await self.templateStep($0, name: name) })
+                                transport: transport(target, context), progress: { await self.templateStep($0, name: name) })
     }
 
     /// A user's template, from the library, or whatever the environment supplies.

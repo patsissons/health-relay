@@ -4,12 +4,16 @@ import Foundation
 /// `Destination.Kind.http`; everything a template writes comes through here.
 public enum LoadTarget: Codable, Sendable, Equatable {
     case web(WebTarget)
+    /// Written to a file for the user to send on with the share sheet.
+    case share
 
     /// What the screens call its destination.
     public var summary: String {
         switch self {
         case .web(let web):
             URL(string: web.url)?.host() ?? web.url
+        case .share:
+            "Share sheet"
         }
     }
 }
@@ -75,6 +79,13 @@ public struct PipelineDefinition: Codable, Sendable, Equatable {
 /// Delivers one finished part.
 public protocol ArtifactTransport: Sendable {
     func deliver(part: ArtifactPart, file: URL, artifact: Artifact) async -> Delivery
+}
+
+/// For a target the engine handles itself.
+struct RefusingTransport: ArtifactTransport {
+    func deliver(part: ArtifactPart, file: URL, artifact: Artifact) async -> Delivery {
+        Delivery(status: nil, verdict: .rejected, message: "This target can't send from here")
+    }
 }
 
 /// What a transport needs to know about the pipeline.

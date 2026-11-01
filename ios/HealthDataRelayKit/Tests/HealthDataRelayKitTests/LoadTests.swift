@@ -592,6 +592,38 @@ enum RichData {
         #expect(marks[2].end == start.addingTimeInterval(500))
     }
 
+    @Test func splitsReadHealthOncePerWorkout() async throws {
+        // Far enough to make dozens of splits.
+        let store = FakeHealthQuerying(calendar: calendar)
+        let start = T.date("2026-10-24 12:00:00 -0700")
+        let id = MetricCatalog.metric(named: "walking_running_distance")!.identifiers[0]
+        store.add(id, DetailedQuantity(source: "Watch", start: start, end: start.addingTimeInterval(3600), value: 40000))
+        store.add(id, DetailedQuantity(source: "iPhone", start: start, end: start.addingTimeInterval(3600), value: 40000))
+        store.add(WorkoutDetail(activityType: "Running", name: "Long Run", source: "Watch", start: start, end: start.addingTimeInterval(3600), duration: 3600, statistics: ["walkingAndRunningDistance": .init(unit: "km", sum: 40)]))
+        var spec = ExtractSpec(sections: [.workouts])
+        spec.workouts.series = false
+        let e = Extractor(store: store, spec: spec, calendar: calendar, ranges: [T.day("2026-10-24").interval(in: calendar)])
+        let sink = MemorySink()
+        let t = try ParsedTemplate(source: "---\nname: n\nformat: json\n---\n{{ workouts }}")
+        _ = try await TemplateTransformer(template: t).run(extractor: e, export: RichData.export) { _, _ in sink }
+        guard case .array(let rows)? = JSON.parse(sink.data), case .array(let splits)? = rows[0]["splits"], case .array(let km)? = splits[0]["items"] else {
+            Issue.record("no splits")
+            return
+        }
+        // 40 km from the watch, not 80 with the phone's overlap, on three reads.
+        #expect(km.count == 40)
+        #expect(store.pageReads <= 3)
+    }
+
+    @Test func aSamplesShareFollowsItsOverlap() {
+        let start = T.date("2026-10-24 12:00:00 -0700")
+        let samples = [DetailedQuantity(source: "Watch", start: start, end: start.addingTimeInterval(100), value: 50),
+                       DetailedQuantity(source: "Watch", start: start.addingTimeInterval(150), end: start.addingTimeInterval(150), value: 7)]
+        #expect(WorkoutSamples.overlap(samples, from: start, to: start.addingTimeInterval(20)) == 10)
+        #expect(WorkoutSamples.overlap(samples, from: start.addingTimeInterval(90), to: start.addingTimeInterval(200)) == 12)
+        #expect(WorkoutSamples.overlap(samples, from: start.addingTimeInterval(200), to: start.addingTimeInterval(300)) == 0)
+    }
+
     @Test func dumpForTheStructureComparer() async throws {
         // HDR_DUMP=<dir>: writes output in the layout tools/hae/compare.mjs reads.
         guard let dir = ProcessInfo.processInfo.environment["HDR_DUMP"] else { return }
@@ -609,5 +641,163 @@ enum RichData {
         var md = RichData.all
         md.sections = [.metrics, .workouts]
         try write("markdown", try await RichData.render(BuiltInTemplates.healthReportMarkdown, spec: md))
+    }
+}
+
+#if os(macOS)
+@Suite struct ZipTests {
+    private let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+
+    private func unzip(_ args: [String]) throws -> (Int32, String) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        p.arguments = args
+        let out = Pipe()
+        p.standardOutput = out
+        p.standardError = out
+        try p.run()
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        return (p.terminationStatus, String(decoding: data, as: UTF8.self))
+    }
+
+    @Test func aZipUnpacksToWhatWentIn() throws {
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let a = dir.appendingPathComponent("a")
+        let b = dir.appendingPathComponent("b")
+        let empty = dir.appendingPathComponent("c")
+        try Data("hello ".utf8 + Data(repeating: 65, count: 300_000)).write(to: a)
+        try Data((0..<100_000).map { _ in UInt8.random(in: 0...255) }).write(to: b)
+        try Data().write(to: empty)
+        let out = dir.appendingPathComponent("out.zip")
+        let zip = try ZipWriter(url: out)
+        try zip.add(file: a, name: "a.txt")
+        try zip.add(file: b, name: "nested/b.bin")
+        try zip.add(file: empty, name: "empty.txt")
+        try zip.finish()
+        let (status, log) = try unzip(["-t", out.path])
+        #expect(status == 0, "\(log)")
+        #expect(log.contains("No errors detected"))
+        // A repetitive file really shrinks.
+        #expect(try out.resourceValues(forKeys: [.fileSizeKey]).fileSize! < 150_000)
+        let unpacked = dir.appendingPathComponent("unpacked")
+        _ = try unzip(["-q", out.path, "-d", unpacked.path])
+        #expect(try Data(contentsOf: unpacked.appendingPathComponent("a.txt")) == Data(contentsOf: a))
+        #expect(try Data(contentsOf: unpacked.appendingPathComponent("nested-b.bin")) == Data(contentsOf: b))
+    }
+
+    @Test func nothingCanUnpackOutsideItsFolder() throws {
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let a = dir.appendingPathComponent("a")
+        try Data("x".utf8).write(to: a)
+        let out = dir.appendingPathComponent("out.zip")
+        let zip = try ZipWriter(url: out)
+        try zip.add(file: a, name: "../../evil.txt")
+        try zip.finish()
+        let (_, log) = try unzip(["-l", out.path])
+        #expect(!log.contains("../"))
+    }
+
+    /// HDR_SLOW=1: 500 MB, as a large export would be. Slow, so not on every run.
+    @Test func aLargeFileStaysUnderTheMemoryLimit() throws {
+        let megabytes = ProcessInfo.processInfo.environment["HDR_SLOW"] != nil ? 500 : 40
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let big = dir.appendingPathComponent("big")
+        FileManager.default.createFile(atPath: big.path, contents: nil)
+        let writer = try FileHandle(forWritingTo: big)
+        let block = Data((0..<(1 << 20)).map { UInt8(truncatingIfNeeded: ($0 &* 31) ^ ($0 >> 7)) })
+        for _ in 0..<megabytes { try writer.write(contentsOf: block) }
+        try writer.close()
+        func footprint() -> Int {
+            var info = task_vm_info_data_t()
+            var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+            _ = withUnsafeMutablePointer(to: &info) { p in
+                p.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
+            }
+            return Int(info.phys_footprint)
+        }
+        let before = footprint()
+        let out = dir.appendingPathComponent("big.zip")
+        let zip = try ZipWriter(url: out)
+        try zip.add(file: big, name: "big.bin")
+        try zip.finish()
+        let grew = footprint() - before
+        #expect(grew < 128 * 1024 * 1024, "grew by \(grew / 1024 / 1024) MB")
+        let (status, log) = try unzip(["-t", out.path])
+        #expect(status == 0, "\(log)")
+        print("ZIP \(megabytes) MB to \(try out.resourceValues(forKeys: [.fileSizeKey]).fileSize! / 1024 / 1024) MB, memory grew \(grew / 1024 / 1024) MB")
+    }
+}
+
+#endif
+
+@Suite struct ExportTests {
+    private let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    private let queries = RichData.store()
+
+    @Test func oneFileKeepsItsName() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let out = try await OneOffExport(store: queries, calendar: calendar, folder: root).run(
+            source: BuiltInTemplates.source(BuiltInTemplates.metricsCSV)!, spec: ExtractSpec(sections: [.metrics], grouping: .days), range: RichData.week, export: RichData.export)
+        #expect(out.name == "metrics-2026-10-20-2026-10-27.csv")
+        #expect(out.bytes > 0)
+        #expect(out.rows > 0)
+        #expect(FileManager.default.fileExists(atPath: out.url.path))
+    }
+
+    @Test func severalFilesBecomeAZip() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let out = try await OneOffExport(store: queries, calendar: calendar, folder: root).run(
+            source: BuiltInTemplates.source(BuiltInTemplates.healthReportMarkdown)!, spec: ExtractSpec(sections: [.metrics, .workouts], grouping: .days), range: RichData.week, export: RichData.export)
+        #expect(out.name.hasSuffix(".zip"))
+        #if os(macOS)
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        p.arguments = ["-tq", out.url.path]
+        p.standardOutput = Pipe()
+        try p.run()
+        p.waitUntilExit()
+        #expect(p.terminationStatus == 0)
+        #endif
+    }
+
+    @Test func aBadTemplateLeavesNothingBehind() async throws {
+        await #expect(throws: TemplateError.self) {
+            _ = try await OneOffExport(store: queries, calendar: calendar, folder: root).run(source: "---\nname: n\nformat: json\n---\n{", spec: ExtractSpec(), range: RichData.week, export: RichData.export)
+        }
+        #expect(!FileManager.default.fileExists(atPath: root.path))
+    }
+
+    @Test func aSingleWorkoutCanBeExported() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        var spec = ExtractSpec(sections: [.workouts], grouping: .days)
+        spec.workouts.ids = ["11111111-1111-4111-8111-111111111111"]
+        let out = try await OneOffExport(store: queries, calendar: calendar, folder: root).run(source: BuiltInTemplates.source(BuiltInTemplates.metricsJSONv2)!, spec: spec, range: RichData.week, export: RichData.export)
+        let text = try String(contentsOf: out.url, encoding: .utf8)
+        #expect(text.contains("Outdoor Run"))
+        #expect(!text.contains("Yoga"))
+    }
+
+    @Test func aSharePipelineLeavesAFileAndARunRecord() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let engine = Engine(.init(store: FakeHealthStore(), files: FileStore(root: root), tokens: MemoryTokenStore(), device: { Device(name: $0, model: "m", os: "o", app: "a") },
+                                  calendar: { calendar }, now: { now }, pause: { _ in }, queries: queries))
+        let spec = ExtractSpec(sections: [.metrics, .workouts], range: .fixed(RichData.week), grouping: .days)
+        let d = await engine.add(Destination(name: "My Export", kind: .target(.share)), token: nil,
+                                 definition: PipelineDefinition(extract: spec, template: .builtIn(BuiltInTemplates.healthReportMarkdown), templateName: "Markdown"))
+        #expect(await engine.snapshot.pipelines[0].destinationSummary == "Share sheet")
+        await engine.run(d.id)
+        let lane = await engine.snapshot.pipelines[0].lane
+        let file = try #require(FileStore(root: root).latestExport(d.id))
+        #expect(file.lastPathComponent == "my-export-2026-10-25.zip")
+        #expect(lane.log.first?.delivery.message.contains("ready to share") == true)
+        #expect(lane.runs?.count == 1)
+        #expect(lane.runs?[0].parts == 2)
+        #expect((lane.runs?[0].rows ?? 0) > 0)
+        await engine.remove(d.id)
+        #expect(FileStore(root: root).latestExport(d.id) == nil)
     }
 }

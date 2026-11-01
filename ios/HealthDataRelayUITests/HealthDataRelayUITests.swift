@@ -294,6 +294,70 @@ final class HealthDataRelayUITests: XCTestCase {
         snap("template-chosen")
     }
 
+    /// A one-off export makes a file to share; a pipeline that asks for its
+    /// range asks, then leaves a file of its own.
+    func testExportAndSharePipeline() throws {
+        tab("Seed")
+        app.buttons["seed"].tap()
+        allowHealth()
+        XCTAssertTrue(app.staticTexts["seed-status"].waitForExistence(timeout: 60))
+
+        tab("Pipelines")
+        app.buttons["export"].tap()
+        let run = app.buttons["export-run"]
+        reveal(run)
+        run.tap()
+        allowHealth()
+        let result = app.staticTexts["export-result"]
+        let failure = app.staticTexts["export-failure"]
+        for _ in 0..<20 where !result.exists && !failure.exists {
+            app.swipeUp()
+            sleep(2)
+        }
+        snap("export-after-run")
+        XCTAssertFalse(failure.exists, failure.exists ? failure.label : "")
+        XCTAssertTrue(result.exists)
+        XCTAssertFalse(result.label.hasPrefix("0 "))
+        XCTAssertTrue(app.buttons["export-share"].exists)
+        snap("export-done")
+        app.buttons["Done"].tap()
+
+        app.buttons["add-pipeline"].tap()
+        type("pipeline-name", "Ask me")
+        app.buttons["transform"].tap()
+        app.buttons["Metrics CSV"].tap()
+        reveal(app.buttons["range"])
+        app.buttons["range"].tap()
+        app.buttons["Ask when run"].tap()
+        reveal(app.buttons["target-kind"])
+        app.buttons["target-kind"].tap()
+        app.buttons["Share sheet"].tap()
+        snap("share-pipeline-new")
+        app.buttons["save-pipeline"].tap()
+        allowHealth()
+        XCTAssertTrue(app.buttons["save-pipeline"].waitForNonExistence(timeout: 10))
+
+        let runButton = app.buttons["run-Ask me"]
+        XCTAssertTrue(runButton.waitForExistence(timeout: 5))
+        let prompt = app.buttons["range-run"]
+        for _ in 0..<3 where !prompt.exists {
+            runButton.tap()
+            _ = prompt.waitForExistence(timeout: 3)
+        }
+        snap("range-prompt")
+        prompt.tap()
+
+        let card = app.staticTexts["Ask me"].firstMatch
+        let share = app.buttons["share-export"]
+        XCTAssertTrue(text("Last run finished").waitForExistence(timeout: 90))
+        card.tap()
+        XCTAssertTrue(share.waitForExistence(timeout: 10))
+        XCTAssertTrue(share.label.contains(".csv"), share.label)
+        app.buttons["run-history"].tap()
+        XCTAssertTrue(text("rows").waitForExistence(timeout: 5))
+        snap("run-history")
+    }
+
     func testPhoneNameIsSavedOnLeavingTheField() throws {
         tab("Settings")
         let field = app.textFields["device-name"]
@@ -345,8 +409,12 @@ final class HealthDataRelayUITests: XCTestCase {
     /// A static text containing `part`, ignoring case (section headers may be upper-cased).
     /// Scrolls a long form until an element is on screen.
     private func reveal(_ element: XCUIElement) {
-        for _ in 0..<8 where !(element.exists && element.isHittable) {
-            app.swipeUp()
+        // Slowly, and back again, since a fast swipe can pass it by.
+        for _ in 0..<10 where !(element.exists && element.isHittable) {
+            app.swipeUp(velocity: .slow)
+        }
+        for _ in 0..<10 where !(element.exists && element.isHittable) {
+            app.swipeDown(velocity: .slow)
         }
     }
 
@@ -396,7 +464,8 @@ final class HealthDataRelayUITests: XCTestCase {
     /// be tapped, and taps it.
     private func tapWhenReady(_ labels: [String]) {
         let button = app.buttons.matching(NSPredicate(format: "label IN %@", labels)).firstMatch
-        for _ in 0..<40 where !(button.exists && button.isHittable && button.isEnabled) {
+        // Mid-animation a button has no frame, and asking if it's hittable throws.
+        for _ in 0..<40 where !(button.exists && !button.frame.isEmpty && button.isHittable && button.isEnabled) {
             app.swipeUp(velocity: .fast)
         }
         button.tap()

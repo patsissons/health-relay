@@ -22,6 +22,7 @@ final class AppModel {
     /// Runs scheduled pipelines as they come due while the app is open.
     private var watcher: Task<Void, Never>?
     let library: TemplateLibrary
+    private let files: FileStore
     private(set) var customTemplates: [CustomTemplate] = []
     /// A setup link waiting for the user to review and save.
     var setup: PendingSetup?
@@ -41,6 +42,7 @@ final class AppModel {
         let os = UIDevice.current.systemVersion
         let app = "Health Data Relay \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0")"
         let files = FileStore.standard()
+        self.files = files
         library = TemplateLibrary(files: files)
         // Read now, not from the engine later: a background wake needs its
         // observers registered during launch.
@@ -156,6 +158,41 @@ final class AppModel {
             try await health.requestAuthorization(types: MetricCatalog.allTypes, extras: [.routes, .heartbeats, .stateOfMind])
         } catch {}
         await refreshAuthorization()
+    }
+
+    /// Writes a one-off export to a file for the user to share.
+    func export(source: String, spec: ExtractSpec, range: DateInterval) async throws -> ExportedFile {
+        var extras: ReadExtras = []
+        if spec.sections.contains(.workouts) { extras.insert(.routes) }
+        if spec.grouping == nil { extras.insert(.heartbeats) }
+        if spec.sections.contains(.stateOfMind) { extras.insert(.stateOfMind) }
+        if spec.sections.contains(.medications) { extras.insert(.medications) }
+        try? await health.requestAuthorization(types: spec.healthTypes, extras: extras)
+        let calendar = Calendar.local()
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("export", isDirectory: true)
+        let export = ExportInfo(device: Device(name: snapshot.deviceName, model: AppModel.deviceModel, os: UIDevice.current.systemVersion, app: "Health Data Relay"), generatedAt: .now, timeZone: calendar.timeZone)
+        return try await OneOffExport(store: health, calendar: calendar, folder: folder).run(source: source, spec: spec, range: range, export: export)
+    }
+
+    func recentWorkouts() async -> [WorkoutDetail] {
+        try? await health.requestAuthorization(types: [.workout], extras: [.routes])
+        let calendar = Calendar.local()
+        let spec = ExtractSpec(sections: [.workouts])
+        let range = DateInterval(start: calendar.date(byAdding: .day, value: -90, to: .now)!, end: .now)
+        var pager = Extractor(store: health, spec: spec, calendar: calendar, ranges: [range]).workouts()
+        var out: [WorkoutDetail] = []
+        while let page = try? await pager.next() { out += page }
+        return out.reversed()
+    }
+
+    /// The last export waiting to be shared, from a share pipeline.
+    func latestExport(_ id: UUID) -> URL? {
+        files.latestExport(id)
+    }
+
+    func run(_ id: UUID, answer: DateInterval) async {
+        await engine.run(id, answer: answer)
+        await applyBackgroundPlan()
     }
 
     func run(_ id: UUID) async {

@@ -72,8 +72,10 @@ people to copy, and a test holds it to the fixture byte for byte.
 The built-in templates are **Metrics JSON v2** (metrics, workouts and any other section turned on,
 in one document, where a section with no data is left out and `metrics` is always there. Other
 sections are opt-in, and medications have an iOS sheet of their own), **Health Report Markdown** (one file per
-section) and **Workout Routes GPX** (one file per workout with a route). Splits are worked out
-from distance samples, per kilometre and per mile, assuming even progress within a sample.
+section) and **Workout Routes GPX** (one file per workout with a route). Splits and segments are
+worked out from one read of a workout's samples: per kilometre and per mile, assuming even progress
+within a sample, and using only the workout's own source when it has samples, since other sources
+often record the same movement.
 
 ## Template library
 
@@ -84,6 +86,18 @@ line and column of any mistake, and its preview runs the template on sample data
 last three days of real data if asked, without sending anything.
 
 Removing a template that a pipeline uses leaves that pipeline asking for another on its card.
+
+## Manual exports
+
+**Export**, on the Pipelines screen, writes a template over chosen dates to a file to share, with
+no pipeline and nothing remembered. It can also export one workout. One file keeps its name, and
+several go in a ZIP, written a piece at a time so a large export costs no memory.
+
+A pipeline can do the same with **Share sheet** as its destination: a run leaves a file on its
+screen, replaced by the next run, and "delivered" means ready to share. A range of **Ask when
+run** asks for dates when Run is tapped, so it needs a manual trigger.
+
+Each run of a template pipeline is recorded with its rows, size and file count, in **Run history**.
 
 ## Delivering a template's output
 
