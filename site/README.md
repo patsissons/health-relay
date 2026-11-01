@@ -1,8 +1,8 @@
-# health-relay.lgtm.page
+# health-data-relay.lgtm.page
 
 The product site and user docs: Astro Starlight, served by a Cloudflare
-Worker with static assets (`wrangler.jsonc`, custom domain
-`health-relay.lgtm.page`).
+Worker with static assets (`wrangler.jsonc`, custom domains
+`health-data-relay.lgtm.page` and `healthdatarelay.lgtm.page`).
 
 ```sh
 pnpm install

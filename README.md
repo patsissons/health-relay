@@ -5,7 +5,7 @@ format, to destinations you choose: your own server, a dashboard, MQTT, email,
 files or your calendar, when you tap Run or on a schedule. Nothing leaves the phone
 except to those destinations.
 
-**Docs and screenshots: [health-relay.lgtm.page](https://health-relay.lgtm.page)**
+**Docs and screenshots: [health-data-relay.lgtm.page](https://health-data-relay.lgtm.page)**
 
 - **Exact incremental sync.** Days that changed are re-sent in full; a
   receiver ends up with what the phone has, deletions included.

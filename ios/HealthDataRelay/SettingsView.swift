@@ -63,7 +63,7 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Link("Privacy policy", destination: URL(string: "https://health-relay.lgtm.page/privacy/")!)
+                    Link("Privacy policy", destination: URL(string: "https://health-data-relay.lgtm.page/privacy/")!)
                 }
             }
             .navigationTitle("Settings")

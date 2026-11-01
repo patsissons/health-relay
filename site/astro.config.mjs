@@ -3,7 +3,7 @@ import { defineConfig } from 'astro/config'
 import starlightLinksValidator from 'starlight-links-validator'
 import starlightLlmsTxt from 'starlight-llms-txt'
 
-const site = 'https://health-relay.lgtm.page'
+const site = 'https://health-data-relay.lgtm.page'
 const repo = 'https://github.com/patsissons/health-relay'
 const meta = (property, content) => ({ tag: 'meta', attrs: { property, content } })
 
