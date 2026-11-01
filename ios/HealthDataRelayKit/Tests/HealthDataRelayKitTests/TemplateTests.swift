@@ -513,3 +513,129 @@ final class PeakSink: OutputSink {
 final class NullSink: OutputSink {
     func write(_ bytes: UnsafeBufferPointer<UInt8>) throws {}
 }
+
+@Suite struct TemplateLibraryTests {
+    private let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    private var library: TemplateLibrary { TemplateLibrary(files: FileStore(root: root)) }
+    private let good = "---\nname: Mine\nformat: csv\n---\n{% for p in metrics.step_count.data %}{{ p.qty }}\n{% endfor %}"
+
+    @Test func everyBuiltInParsesAndHasADescription() throws {
+        #expect(BuiltInTemplates.all.count >= 6)
+        for id in BuiltInTemplates.all {
+            let t = try BuiltInTemplates.template(id)
+            #expect(t.header.description != nil, "\(id)")
+        }
+    }
+
+    @Test func aTemplateCanBeSavedListedAndRemoved() throws {
+        let id = try library.save(good)
+        #expect(library.custom().map(\.name) == ["Mine"])
+        #expect(library.source(.custom(id)) == good)
+        #expect(library.entries().contains { $0.ref == .custom(id) && $0.format == .csv })
+        library.remove(id)
+        #expect(library.custom().isEmpty)
+    }
+
+    @Test func aBadEditKeepsTheOldTemplate() throws {
+        let id = try library.save(good)
+        #expect(throws: TemplateError.self) { try library.save("---\nname: Mine\n---\n{{ oops", id: id) }
+        #expect(library.source(.custom(id)) == good)
+    }
+
+    @Test func importRefusesWhatIsntATemplate() throws {
+        let file = root.appendingPathExtension("bin")
+        try Data([0xFF, 0xFE, 0x00]).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        #expect(throws: TemplateError.self) { try library.importFile(file) }
+        try Data(good.utf8).write(to: file)
+        let id = try library.importFile(file)
+        #expect(library.source(.custom(id)) == good)
+    }
+
+    @Test func exportNamesAreSafe() {
+        #expect(TemplateLibrary.exportName("Daily / Steps!") == "daily---steps-.liquid")
+    }
+
+    /// From import to delivery.
+    @Test func anImportedTemplateDelivers() async throws {
+        let cal = calendar
+        let now = T.date("2026-10-25 12:00:00 -0700")
+        let files = FileStore(root: root)
+        let file = root.appendingPathExtension("liquid")
+        try Data(good.utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let id = try TemplateLibrary(files: files).importFile(file)
+        let queries = FakeHealthQuerying(calendar: cal)
+        queries.add("step_count", at: T.date("2026-10-25 09:00:00 -0700"), 42)
+        let transport = RecordingTransport()
+        let engine = Engine(.init(store: FakeHealthStore(), files: files, tokens: MemoryTokenStore(), device: { Device(name: $0, model: "m", os: "o", app: "a") },
+                                  calendar: { cal }, now: { now }, pause: { _ in }, queries: queries, makeTransport: { _, _ in transport }))
+        let d = await engine.add(Destination(name: "Mine", kind: .target(.web(WebTarget(url: "https://example.com")))), token: nil,
+                                 definition: PipelineDefinition(extract: ExtractSpec(range: .today, grouping: .days), template: .custom(id), templateName: "Mine"))
+        await engine.run(d.id)
+        #expect(transport.texts == ["42\n"])
+    }
+
+    /// A pipeline copied from the native format's twin runs for real, and its
+    /// data is the native push's.
+    @Test func theTwinRunsAsAPipeline() async throws {
+        let cal = calendar
+        let now = T.date("2026-10-25 07:00:00 -0700")
+        let transport = RecordingTransport()
+        let engine = Engine(.init(store: FixtureTests.store(), files: FileStore(root: root), tokens: MemoryTokenStore(), device: { _ in FixtureTests.device },
+                                  calendar: { cal }, now: { now }, pause: { _ in }, queries: FakeHealthQuerying(calendar: cal), makeTransport: { _, _ in transport }))
+        let range = DateInterval(start: T.day("2026-10-24").start(in: cal), end: T.day("2026-10-26").start(in: cal))
+        let d = await engine.add(Destination(name: "Copy", kind: .target(.web(WebTarget(url: "https://example.com")))), token: nil,
+                                 definition: PipelineDefinition(extract: ExtractSpec(range: .fixed(range)), template: .builtIn(BuiltInTemplates.healthDataRelay), templateName: "Twin"))
+        await engine.run(d.id)
+        let want = try String(contentsOf: FixtureTests.fixtures.appendingPathComponent("push-two-days.json"), encoding: .utf8)
+        #expect(transport.texts == [want])
+    }
+}
+
+@Suite struct TemplatePreviewTests {
+    private let cal = calendar
+    private let now = T.date("2026-10-25 12:00:00 -0700")
+
+    @Test func everyBuiltInPreviewsOnSampleData() async throws {
+        for id in BuiltInTemplates.all where id != BuiltInTemplates.healthDataRelay {
+            let out = await TemplatePreview.render(source: BuiltInTemplates.source(id)!, calendar: cal, now: now)
+            #expect(out.error == nil, "\(id): \(out.error ?? "")")
+            #expect(!out.parts.isEmpty, "\(id)")
+            #expect(out.parts[0].text.count > 20, "\(id)")
+        }
+    }
+
+    @Test func anErrorSaysWhere() async {
+        let out = await TemplatePreview.render(source: "---\nname: n\n---\nfine\n{{ a | nope }}", calendar: cal, now: now)
+        #expect(out.error?.contains("nope") == true)
+        #expect(out.line == 5)
+        #expect(out.parts.isEmpty)
+    }
+
+    @Test func invalidOutputIsAnError() async {
+        let out = await TemplatePreview.render(source: "---\nname: n\nformat: json\n---\n{\"a\":", calendar: cal, now: now)
+        #expect(out.error?.contains("valid JSON") == true)
+    }
+
+    @Test func longOutputIsCutForShowing() async {
+        let out = await TemplatePreview.render(source: "---\nname: n\n---\n{% for i in (1..20000) %}0123456789{% endfor %}", calendar: cal, now: now)
+        #expect(out.parts[0].isTruncated)
+        #expect(out.parts[0].text.utf8.count == TemplatePreview.shownBytes)
+    }
+
+    @Test func aRunawayStopsQuickly() async {
+        let out = await TemplatePreview.render(source: "---\nname: n\n---\n{% for i in (1..400) %}{% for j in (1..400) %}{% for k in (1..400) %}x{% endfor %}{% endfor %}{% endfor %}", calendar: cal, now: now)
+        #expect(out.error != nil)
+    }
+
+    @Test func csvAndHtmlBuiltInsLookRight() async {
+        let csv = await TemplatePreview.render(source: BuiltInTemplates.source(BuiltInTemplates.metricsCSV)!, calendar: cal, now: now)
+        #expect(csv.parts[0].text.hasPrefix("date,metric,value,min,max,units,source\n"))
+        #expect(csv.parts[0].text.contains(",step_count,"))
+        #expect(csv.parts[0].filename.hasSuffix(".csv"))
+        let html = await TemplatePreview.render(source: BuiltInTemplates.source(BuiltInTemplates.healthSummaryHTML)!, calendar: cal, now: now)
+        #expect(html.parts[0].text.contains("<h2>Steps</h2>"))
+        #expect(html.parts[0].text.contains("Outdoor Run"))
+    }
+}

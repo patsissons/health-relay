@@ -391,7 +391,7 @@ public actor Engine {
 
     /// The template over no data: the shape a receiver will get, with nothing in it.
     private func testTemplate(id: UUID, destination d: Destination, target: LoadTarget, definition: PipelineDefinition) async -> Delivery {
-        guard let queries = env.queries, let source = env.templateSource(definition.template) else {
+        guard let queries = env.queries, let source = templateSource(definition.template) else {
             return Delivery(status: nil, verdict: .rejected, message: "Template not found")
         }
         let calendar = env.calendar()
@@ -734,7 +734,7 @@ public actor Engine {
 
     private func runTemplate(_ d: Destination, target: LoadTarget, definition: PipelineDefinition, access: Pusher.LaneAccess, calendar: Calendar, deviceName: String) async -> Pusher.Stop {
         let id = d.id
-        guard let queries = env.queries, let source = env.templateSource(definition.template) else {
+        guard let queries = env.queries, let source = templateSource(definition.template) else {
             await access.update { $0.attention = "This pipeline's template is gone. Choose another." }
             return .failed
         }
@@ -755,9 +755,21 @@ public actor Engine {
                                     export: { ExportInfo(device: env.device(deviceName), generatedAt: env.now(), timeZone: calendar.timeZone) },
                                     limits: TemplateLimits(deadline: limit))
         let cursor = ArtifactRunner.CursorAccess(read: { await self.cursor(id) }, write: { await self.setCursor(id, $0) })
+        // The native format's data, for a template that writes it: see `Template.usesPush`.
+        let store = env.store
+        let pushData: ArtifactRunner.PushData = { days in
+            let read = try await DayReader(store: store, calendar: calendar).read(days)
+            let content = Content.merging(days.map { read[$0] ?? Content() })
+            return Push(device: env.device(deviceName), exportedAt: env.now(), timeZone: calendar.timeZone, days: days, content: content).json
+        }
         let context = TransportContext(pipelineID: id, pipelineName: name, extract: definition.extract, token: env.tokens.token(for: id))
-        return await runner.run(id: id, definition: definition, template: template, destinationTemplate: Engine.addressTemplate(target), access: access, cursor: cursor, answer: answers[id],
+        return await runner.run(id: id, definition: definition, template: template, destinationTemplate: Engine.addressTemplate(target), access: access, cursor: cursor, answer: answers[id], pushData: pushData,
                                 transport: env.makeTransport(target, context), progress: { await self.templateStep($0, name: name) })
+    }
+
+    /// A user's template, from the library, or whatever the environment supplies.
+    private func templateSource(_ ref: TemplateRef) -> String? {
+        env.templateSource(ref) ?? TemplateLibrary(files: env.files).source(ref)
     }
 
     private func cursor(_ id: UUID) -> ExtractCursor { state.cursors?[id] ?? ExtractCursor() }

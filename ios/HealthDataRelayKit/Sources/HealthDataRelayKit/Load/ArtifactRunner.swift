@@ -23,7 +23,10 @@ struct ArtifactRunner: Sendable {
         let write: @Sendable (ExtractCursor) async -> Void
     }
 
-    func run(id: UUID, definition: PipelineDefinition, template: ParsedTemplate, destinationTemplate: String?, access: Pusher.LaneAccess, cursor: CursorAccess, answer: DateInterval?, transport: ArtifactTransport, progress: @Sendable (Step) async -> Void = { _ in }) async -> Pusher.Stop {
+    /// Reads the native format's data for some days.
+    typealias PushData = @Sendable ([Day]) async throws -> JSON
+
+    func run(id: UUID, definition: PipelineDefinition, template: ParsedTemplate, destinationTemplate: String?, access: Pusher.LaneAccess, cursor: CursorAccess, answer: DateInterval?, pushData: PushData? = nil, transport: ArtifactTransport, progress: @Sendable (Step) async -> Void = { _ in }) async -> Pusher.Stop {
         files.clearUnfinishedArtifacts(id)
         var produced = false
         while true {
@@ -39,7 +42,7 @@ struct ArtifactRunner: Sendable {
             if produced && !definition.usesDirtyDays { return .done }
             do {
                 await progress(.rendering)
-                guard try await produce(id: id, definition: definition, template: template, destinationTemplate: destinationTemplate, lane: lane, cursor: cursor, answer: answer, access: access) else { return .done }
+                guard try await produce(id: id, definition: definition, template: template, destinationTemplate: destinationTemplate, lane: lane, cursor: cursor, answer: answer, pushData: pushData, access: access) else { return .done }
                 produced = true
             } catch let error as TemplateError {
                 // A template doesn't get better by being retried.
@@ -59,7 +62,7 @@ struct ArtifactRunner: Sendable {
     }
 
     /// Renders one artifact. False when there's nothing to send.
-    private func produce(id: UUID, definition: PipelineDefinition, template: ParsedTemplate, destinationTemplate: String?, lane: Lane, cursor: CursorAccess, answer: DateInterval?, access: Pusher.LaneAccess) async throws -> Bool {
+    private func produce(id: UUID, definition: PipelineDefinition, template: ParsedTemplate, destinationTemplate: String?, lane: Lane, cursor: CursorAccess, answer: DateInterval?, pushData: PushData?, access: Pusher.LaneAccess) async throws -> Bool {
         let spec = definition.extract
         let at = now()
         let saved = await cursor.read()
@@ -95,12 +98,18 @@ struct ArtifactRunner: Sendable {
 
         let ranges = try RangePlanner(calendar: calendar).ranges(spec.range, now: at, cursor: saved, changedDays: days, late: late, answer: answer)
         let extractor = Extractor(store: store, spec: spec, calendar: calendar, ranges: ranges)
+        var push: JSON?
+        if template.usesPush, let pushData {
+            // Whole local days, however the range was asked for.
+            let covered = ranges.flatMap { DirtyRules.days(of: $0, calendar: calendar) }
+            push = try await pushData(Array(Set(days + covered)).sorted())
+        }
         let folder = try files.beginArtifact(id)
         var counter = 0
         var names: [String] = []
         var sinks: [FileSink] = []
         do {
-            let rendered = try await TemplateTransformer(template: template, limits: limits).run(extractor: extractor, export: export()) { _, _ in
+            let rendered = try await TemplateTransformer(template: template, limits: limits).run(extractor: extractor, export: export(), push: push) { _, _ in
                 let name = "part-\(counter)"
                 counter += 1
                 names.append(name)

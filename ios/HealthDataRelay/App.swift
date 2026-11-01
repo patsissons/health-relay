@@ -11,6 +11,8 @@ struct HealthDataRelayApp: App {
             TabView {
                 PipelinesView()
                     .tabItem { Label("Pipelines", systemImage: "arrow.triangle.branch") }
+                TemplatesView()
+                    .tabItem { Label("Templates", systemImage: "doc.text") }
                 SettingsView()
                     .tabItem { Label("Settings", systemImage: "gearshape") }
                 #if DEBUG && targetEnvironment(simulator)

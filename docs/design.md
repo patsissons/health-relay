@@ -69,10 +69,21 @@ delivered. [templates.md](templates.md) is its contract. The native format stays
 native code, with its batching and bytes unchanged. A template twin of it ships for
 people to copy, and a test holds it to the fixture byte for byte.
 
-The built-in templates are **Metrics JSON v2** (every section in one document, where a section
-with no data is left out and `metrics` is always there), **Health Report Markdown** (one file per
+The built-in templates are **Metrics JSON v2** (metrics, workouts and any other section turned on,
+in one document, where a section with no data is left out and `metrics` is always there. Other
+sections are opt-in, and medications have an iOS sheet of their own), **Health Report Markdown** (one file per
 section) and **Workout Routes GPX** (one file per workout with a route). Splits are worked out
 from distance samples, per kilometre and per mile, assuming even progress within a sample.
+
+## Template library
+
+The **Templates** tab lists the built-ins and the user's own, saved as text files in
+`templates/`. A built-in can be read, shared or copied to edit. An edit that doesn't parse
+can't be saved, so a pipeline can't break on a half-finished change. The editor shows the
+line and column of any mistake, and its preview runs the template on sample data, or on the
+last three days of real data if asked, without sending anything.
+
+Removing a template that a pipeline uses leaves that pipeline asking for another on its card.
 
 ## Delivering a template's output
 

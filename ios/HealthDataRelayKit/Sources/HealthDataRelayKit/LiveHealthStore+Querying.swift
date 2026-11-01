@@ -13,7 +13,8 @@ extension LiveHealthStore: HealthQuerying {
         if types.contains(.workout) || extras.contains(.routes) { out.insert(HKSeriesType.workoutRoute()) }
         if extras.contains(.heartbeats) { out.insert(HKSeriesType.heartbeat()) }
         if extras.contains(.stateOfMind), #available(iOS 18.0, *) { out.insert(HKObjectType.stateOfMindType()) }
-        if extras.contains(.medications), #available(iOS 26.0, *) { out.insert(HKObjectType.medicationDoseEventType()) }
+        // Not medications: their doses come with the per-medication sharing
+        // below, and HealthKit raises if they're asked for here.
         return out
     }
 

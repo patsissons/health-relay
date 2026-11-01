@@ -260,6 +260,40 @@ final class HealthDataRelayUITests: XCTestCase {
         snap("template-pipeline-ran")
     }
 
+    /// Writing a template: a mistake shows its line, a fix shows its output on
+    /// sample data, and once saved it can be chosen for a pipeline.
+    func testWriteATemplate() throws {
+        tab("Templates")
+        XCTAssertTrue(app.staticTexts["Metrics JSON v2"].waitForExistence(timeout: 10))
+        app.buttons["new-template"].tap()
+        let editor = app.textViews["template-source"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.tap()
+        editor.typeText("{{ a | nope }}")
+        let error = app.staticTexts["template-error"]
+        XCTAssertTrue(error.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["save-template"].isEnabled)
+        snap("template-error")
+        for _ in 0..<14 { editor.typeText(XCUIKeyboardKey.delete.rawValue) }
+        XCTAssertTrue(app.buttons["save-template"].waitForExistence(timeout: 5))
+        let enabled = NSPredicate(format: "isEnabled == true")
+        expectation(for: enabled, evaluatedWith: app.buttons["save-template"])
+        waitForExpectations(timeout: 5)
+
+        app.buttons["Preview"].tap()
+        XCTAssertTrue(text("date,steps,source").waitForExistence(timeout: 5))
+        snap("template-preview")
+
+        app.buttons["save-template"].tap()
+        XCTAssertTrue(app.staticTexts["My template"].waitForExistence(timeout: 5))
+
+        tab("Pipelines")
+        app.buttons["add-pipeline"].tap()
+        app.buttons["transform"].tap()
+        XCTAssertTrue(app.buttons["My template"].waitForExistence(timeout: 5))
+        snap("template-chosen")
+    }
+
     func testPhoneNameIsSavedOnLeavingTheField() throws {
         tab("Settings")
         let field = app.textFields["device-name"]
@@ -331,6 +365,12 @@ final class HealthDataRelayUITests: XCTestCase {
     private func allowHealth() {
         let icon = app.images["healthauthorization_icon_large"]
         guard icon.waitForExistence(timeout: 10) else { return }
+        // Medications have their own sheet, with nothing to choose on a simulator.
+        let cancelOnly = app.buttons["UIA.Health.CancelOnly.Button"]
+        if cancelOnly.exists {
+            cancelOnly.tap()
+            return
+        }
         snap("health-sheet")
         let selectAll = app.cells["UIA.Health.AuthSheet.AllCategoryButton"]
         if selectAll.exists {

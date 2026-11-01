@@ -9,9 +9,12 @@ public enum BuiltInTemplates {
     public static let metricsJSONv2 = "metrics-json-v2"
     public static let healthReportMarkdown = "health-report-markdown"
     public static let workoutRoutesGPX = "workout-routes-gpx"
+    public static let metricsCSV = "metrics-csv"
+    public static let healthSummaryHTML = "health-summary-html"
 
-    /// What the app offers to start from, in order.
-    public static let all = [healthDataRelay, metricsJSONv2, healthReportMarkdown, workoutRoutesGPX]
+    /// What the app offers, in order. The native format's twin comes last: it
+    /// reads the same data as the native push and is there to copy.
+    public static let all = [metricsJSONv2, metricsCSV, healthReportMarkdown, healthSummaryHTML, workoutRoutesGPX, healthDataRelay]
 
     public static func source(_ id: String) -> String? {
         guard let url = Bundle.module.url(forResource: id, withExtension: "liquid", subdirectory: "Templates") else { return nil }

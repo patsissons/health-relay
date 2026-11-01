@@ -590,6 +590,9 @@ public struct ParsedTemplate: Sendable {
     /// Renders only the first partition: a test of a template over no data.
     var onlyFirstPartition = false
 
+    /// Whether it writes the native format's data, which takes its own read.
+    var usesPush: Bool { source.contains("push") }
+
     public init(source: String) throws {
         self.source = source
         let (headerText, bodyText, headerLines) = Self.split(source)

@@ -21,6 +21,8 @@ final class AppModel {
     private var observing = false
     /// Runs scheduled pipelines as they come due while the app is open.
     private var watcher: Task<Void, Never>?
+    let library: TemplateLibrary
+    private(set) var customTemplates: [CustomTemplate] = []
     /// A setup link waiting for the user to review and save.
     var setup: PendingSetup?
     var badLink = false
@@ -39,6 +41,7 @@ final class AppModel {
         let os = UIDevice.current.systemVersion
         let app = "Health Data Relay \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0")"
         let files = FileStore.standard()
+        library = TemplateLibrary(files: files)
         // Read now, not from the engine later: a background wake needs its
         // observers registered during launch.
         let plan = files.load().backgroundPlan
@@ -57,6 +60,17 @@ final class AppModel {
         // Nothing to observe also clears background delivery an earlier launch turned on.
         if plan.observesHealth { observeHealth() } else if LiveHealthStore.isAvailable { health.stopObserving() }
         Task { await refreshAuthorization() }
+        customTemplates = library.custom()
+    }
+
+    func reloadTemplates() {
+        customTemplates = library.custom()
+    }
+
+    /// Removes a template. A pipeline still using it says so on its card.
+    func removeTemplate(_ id: UUID) {
+        library.remove(id)
+        reloadTemplates()
     }
 
     /// `iPhone17,1`; the simulator reports the model it simulates.

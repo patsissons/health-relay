@@ -131,6 +131,13 @@ the level to start at: `{{ workout | markdown_tree: 3 }}`.
 Numbers write the way JavaScript writes them, so `{{ 3 | divided_by: 2 }}` is `1.5`.
 Only `nil` and `false` are false; `0` and `""` are true, as in all Liquid.
 
+## The native format's data
+
+`push` holds the native format's body for the run's days: `schema`, `device`, `exportedAt`,
+`tz`, `days`, `stats`, `samples`, `workouts`, `summaries` and `ecg`, as in
+[schema.md](schema.md). The built-in Health Data Relay template writes it out field by field,
+so copying it is the way to customize that format.
+
 ## Large data
 
 A loop reads Health a page at a time and output goes straight to disk, so a template

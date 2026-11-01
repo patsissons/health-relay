@@ -80,3 +80,16 @@ switch is off in Settings › Health › Data Access & Devices › Health Data R
 **Values by day**: today's or yesterday's value for every metric, read the way a
 pipeline reads them, so you can compare them with the Health app. **Allow every
 kind of data** there asks iOS for access to everything a pipeline can read.
+
+## Templates
+
+A pipeline's **Transform** can be a template, which decides what its output looks like. The
+**Templates** tab lists the ones that come with the app: Metrics JSON v2, Metrics CSV, Health
+Report Markdown, Health Summary HTML, Workout Routes GPX and Health Data Relay, which writes
+the native format out field by field.
+
+To write your own, tap **New template**, or copy a built-in and change it. **Preview** shows
+what it writes on sample data, or on your own last three days, and a mistake shows its line
+and column. Templates are text files, so you can share them and bring them in with
+**Import a file**. [The template reference](https://github.com/patsissons/health-relay/blob/main/docs/templates.md)
+lists everything a template can use.

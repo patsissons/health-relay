@@ -370,23 +370,27 @@ struct PipelineEditor: View {
     @State private var saved: PipelineTrigger?
     @State private var loaded = false
     /// Nil is the native format; otherwise a template and what it reads.
-    @State private var template: BuiltInChoice?
+    @State private var template: TemplateLibrary.Entry?
     @State private var spec = ExtractSpec(range: .sinceLastRun, grouping: .automatic)
     @State private var method = WebTarget.Method.post
     @State private var multipart = false
     @State private var automationHeaders = true
 
-    private struct BuiltInChoice: Hashable {
-        let id: String
-        let name: String
-    }
+    private var choices: [TemplateLibrary.Entry] { model.library.entries() }
 
-    /// What the Transform picker offers: the native format, then every
-    /// built-in template except the native format's own twin, which is there to copy.
-    private var choices: [BuiltInChoice] {
-        BuiltInTemplates.all.filter { $0 != BuiltInTemplates.healthDataRelay }.compactMap { id in
-            (try? BuiltInTemplates.template(id)).map { BuiltInChoice(id: id, name: $0.header.name) }
+    /// Starts from a common job's settings.
+    private func apply(_ preset: PipelinePreset) {
+        template = choices.first { $0.ref == .builtIn(preset.template) }
+        spec = preset.extract
+        switch preset.trigger {
+        case .manual: kind = .manual
+        case .whenHealthChanges: kind = .health
+        case .every(let schedule):
+            kind = .schedule
+            count = schedule.count
+            unit = schedule.unit
         }
+        if name.trimmingCharacters(in: .whitespaces).isEmpty { name = preset.name }
     }
 
     private var endpoint: HTTPEndpoint? {
@@ -438,14 +442,37 @@ struct PipelineEditor: View {
                 }
             }
 
+            if existing == nil && setup == nil {
+                Section {
+                    Menu {
+                        ForEach(PipelinePreset.all()) { preset in
+                            Button {
+                                apply(preset)
+                            } label: {
+                                Text(preset.name)
+                                Text(preset.note)
+                            }
+                        }
+                    } label: {
+                        Label("Start from a preset", systemImage: "wand.and.stars")
+                    }
+                    .accessibilityIdentifier("preset")
+                }
+            }
+
             Section {
                 TextField("Name", text: $name)
                     .accessibilityIdentifier("pipeline-name")
                 Picker("Transform", selection: $template) {
-                    Text(TransformSpec.healthDataRelayPush.title).tag(BuiltInChoice?.none)
-                    ForEach(choices, id: \.self) { Text($0.name).tag(BuiltInChoice?.some($0)) }
+                    Text(TransformSpec.healthDataRelayPush.title).tag(TemplateLibrary.Entry?.none)
+                    ForEach(choices) { Text($0.name).tag(TemplateLibrary.Entry?.some($0)) }
                 }
                 .accessibilityIdentifier("transform")
+                .onChange(of: template) { _, entry in
+                    // Start from the sections a template says it uses.
+                    guard let entry, let source = model.library.source(entry.ref), let parsed = try? ParsedTemplate(source: source), !parsed.header.data.isEmpty else { return }
+                    spec.sections = Set(parsed.header.data)
+                }
             } footer: {
                 Text(template == nil
                      ? "Sends each day that changed, whole, in the Health Data Relay schema, deletions included."
@@ -560,8 +587,9 @@ struct PipelineEditor: View {
                     if case .multipart = web.body { multipart = true }
                 }
                 let pipeline = model.snapshot.pipelines.first { $0.id == existing.id }
-                if let definition = pipeline?.definition, case .builtIn(let id) = definition.template {
-                    template = BuiltInChoice(id: id, name: definition.templateName)
+                if let definition = pipeline?.definition {
+                    let entry = choices.first { $0.ref == definition.template }
+                    template = entry ?? TemplateLibrary.Entry(ref: definition.template, name: definition.templateName, format: .text)
                     spec = definition.extract
                 }
                 let current = pipeline?.trigger
@@ -601,7 +629,7 @@ struct PipelineEditor: View {
             let web = WebTarget(url: url.trimmingCharacters(in: .whitespaces), method: method,
                                 headers: headers.filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty },
                                 body: multipart ? .multipart(field: "file") : .raw, automationHeaders: automationHeaders)
-            let definition = PipelineDefinition(extract: spec, template: .builtIn(template.id), templateName: template.name)
+            let definition = PipelineDefinition(extract: spec, template: template.ref, templateName: template.name)
             await model.save(existing: status?.destination, name: trimmed, target: .web(web), definition: definition, token: token, trigger: trigger)
             return
         }

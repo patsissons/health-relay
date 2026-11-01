@@ -1,0 +1,10 @@
+---
+name: Metrics CSV
+description: One row per value, one file for the whole run. Opens in any spreadsheet.
+format: csv
+data: [metrics]
+filename: "metrics-{{ export.start | date: '%Y-%m-%d' }}-{{ export.end | date: '%Y-%m-%d' }}.csv"
+---
+date,metric,value,min,max,units,source
+{% for m in metrics %}{% for p in m.data %}{{ p.date }},{{ m.name }},{% if p.qty %}{{ p.qty }}{% elsif p.Avg %}{{ p.Avg }}{% elsif p.totalSleep %}{{ p.totalSleep }}{% elsif p.systolic %}{{ p.systolic }}/{{ p.diastolic }}{% endif %},{{ p.Min }},{{ p.Max }},{{ m.units }},{{ p.source }}
+{% endfor %}{% endfor %}

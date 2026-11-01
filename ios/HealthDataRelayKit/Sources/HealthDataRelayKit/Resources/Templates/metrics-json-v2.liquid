@@ -1,8 +1,8 @@
 ---
 name: Metrics JSON v2
-description: Metrics, workouts and every other section as one JSON document, in the shape many health dashboards read.
+description: Metrics, workouts and any other section you turn on, as one JSON document, in the shape many health dashboards read.
 format: json
-data: [metrics, workouts, symptoms, ecg, heart_rate_notifications, state_of_mind, cycle_tracking, medications]
+data: [metrics, workouts]
 ---
 {"data":{"metrics":[{% for m in metrics %}{{ m }}{% unless forloop.last %},{% endunless %}{% endfor %}]
 {%- if workouts.first %},"workouts":{{ workouts }}{% endif -%}

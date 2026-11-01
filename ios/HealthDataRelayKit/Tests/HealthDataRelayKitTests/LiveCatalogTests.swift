@@ -46,6 +46,16 @@ import Testing
         #expect(missing.isEmpty, "\(missing)")
     }
 
+    /// HealthKit raises an uncatchable exception for a type it won't let an app
+    /// ask for in the general request, and doses are one: they come with the
+    /// per-medication sheet. The app's real request is exercised by the UI test
+    /// testValuesByDayMatchWhatWasWritten, which needs the app's entitlement.
+    @Test func dosesStayOutOfTheGeneralRequest() {
+        let types = LiveHealthStore.objectTypes(MetricCatalog.allTypes, extras: [.routes, .heartbeats, .stateOfMind, .medications])
+        #expect(types.count > 100)
+        if #available(iOS 26.0, *) { #expect(!types.contains(HKObjectType.medicationDoseEventType())) }
+    }
+
     @Test func theCoreTypesExist() {
         let missing = Catalog.allTypes.filter { LiveHealthStore.sampleType($0) == nil }.map(\.id)
         // Only identifiers newer than this OS may be missing.
