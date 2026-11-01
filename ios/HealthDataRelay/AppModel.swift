@@ -20,7 +20,9 @@ final class AppModel {
 
     let engine: Engine
     let health: LiveHealthStore
-    private(set) var snapshot = Snapshot()
+    private(set) var snapshot = Snapshot() { didSet { keepAwake() } }
+    /// Whether a one-off export is being written.
+    private var exporting = false { didSet { keepAwake() } }
     private(set) var needsAuthorization = false
     private(set) var recent: [(type: HealthType, newest: Date?)] = []
     /// The answer to the last Test, by destination.
@@ -142,6 +144,12 @@ final class AppModel {
 
     // MARK: Running
 
+    /// A screen that locks on its own suspends the app and stops the work
+    /// partway, so it stays on until the work is done.
+    private func keepAwake() {
+        UIApplication.shared.isIdleTimerDisabled = snapshot.syncing || exporting
+    }
+
     /// Runs one pipeline: after whatever is running, whatever its backoff says.
     /// One metric's total or mean for a day.
     struct DayValue: Identifiable {
@@ -185,6 +193,8 @@ final class AppModel {
 
     /// Writes a one-off export to a file for the user to share.
     func export(source: String, spec: ExtractSpec, range: DateInterval) async throws -> ExportedFile {
+        exporting = true
+        defer { exporting = false }
         var extras: ReadExtras = []
         if spec.sections.contains(.workouts) { extras.insert(.routes) }
         if spec.grouping == nil { extras.insert(.heartbeats) }
