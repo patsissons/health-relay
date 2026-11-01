@@ -1,0 +1,8 @@
+{
+  "name": "template-conformance",
+  "private": true,
+  "description": "Checks that the app's template language behaves like Liquid, using liquidjs. Development only: nothing here ships.",
+  "type": "module",
+  "scripts": { "test": "node conformance.mjs" },
+  "devDependencies": { "liquidjs": "10.21.1" }
+}

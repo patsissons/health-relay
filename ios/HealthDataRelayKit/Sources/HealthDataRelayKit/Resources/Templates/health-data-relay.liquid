@@ -1,0 +1,27 @@
+---
+name: Health Data Relay
+description: The apple-push/1 schema, written out field by field. A starting point for your own, and the proof templates can produce it exactly.
+format: json
+---
+{%- assign p = push -%}
+{"days":[{% for d in p.days %}{{ d }}{% unless forloop.last %},{% endunless %}{% endfor %}],
+{%- if p.device %}"device":{"app":{{ p.device.app }},"model":{{ p.device.model }},"name":{{ p.device.name }},"os":{{ p.device.os }}},{% endif -%}
+"ecg":[{% for e in p.ecg %}{
+  {%- if e.avgHr %}"avgHr":{{ e.avgHr }},{% endif -%}
+  "classification":{{ e.classification }},"rate":{{ e.rate }},"recorded":{{ e.recorded }},"samples":[{% for s in e.samples %}{{ s }}{% unless forloop.last %},{% endunless %}{% endfor %}]}{% unless forloop.last %},{% endunless %}{% endfor %}],"exportedAt":{{ p.exportedAt }},"samples":[{% for s in p.samples %}{"endDate":{{ s.endDate }},"sourceName":{{ s.sourceName }},"startDate":{{ s.startDate }},"type":{{ s.type }},{% if s.unit %}"unit":{{ s.unit }},{% endif %}"value":{{ s.value }}}{% unless forloop.last %},{% endunless %}{% endfor %}],"schema":{{ p.schema }},"stats":[{% for r in p.stats %}{
+  {%- if r.avg %}"avg":{{ r.avg }},{% endif -%}
+  {%- if r.count %}"count":{{ r.count }},{% endif -%}
+  "day":{{ r.day }},
+  {%- if r.latest %}"latest":{{ r.latest }},{% endif -%}
+  {%- if r.latestAt %}"latestAt":{{ r.latestAt }},{% endif -%}
+  {%- if r.max %}"max":{{ r.max }},{% endif -%}
+  {%- if r.min %}"min":{{ r.min }},{% endif -%}
+  "source":{{ r.source }},
+  {%- if r.sum %}"sum":{{ r.sum }},{% endif -%}
+  "type":{{ r.type }},"unit":{{ r.unit }}}{% unless forloop.last %},{% endunless %}{% endfor %}],"summaries":[{% for s in p.summaries %}{"activeEnergyBurnedGoal":{{ s.activeEnergyBurnedGoal }},"activeEnergyBurnedGoalUnit":{{ s.activeEnergyBurnedGoalUnit }},"appleStandHours":{{ s.appleStandHours }},"dateComponents":{{ s.dateComponents }}}{% unless forloop.last %},{% endunless %}{% endfor %}],"tz":{{ p.tz }},"workouts":[{% for w in p.workouts %}{"duration":{{ w.duration }},"durationUnit":{{ w.durationUnit }},"endDate":{{ w.endDate }},
+  {%- if w.route %}"route":[{% for r in w.route %}{"ele":{{ r.ele }},"lat":{{ r.lat }},"lon":{{ r.lon }}}{% unless forloop.last %},{% endunless %}{% endfor %}],{% endif -%}
+  "sourceName":{{ w.sourceName }},"startDate":{{ w.startDate }},"stats":[{% for s in w.stats %}{
+    {%- if s.average %}"average":{{ s.average }},{% endif -%}
+    {%- if s.maximum %}"maximum":{{ s.maximum }},{% endif -%}
+    {%- if s.sum %}"sum":{{ s.sum }},{% endif -%}
+    "type":{{ s.type }},"unit":{{ s.unit }}}{% unless forloop.last %},{% endunless %}{% endfor %}],"workoutActivityType":{{ w.workoutActivityType }}}{% unless forloop.last %},{% endunless %}{% endfor %}]}

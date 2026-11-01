@@ -8,7 +8,7 @@ let package = Package(
         .library(name: "HealthDataRelayKit", targets: ["HealthDataRelayKit"]),
     ],
     targets: [
-        .target(name: "HealthDataRelayKit"),
+        .target(name: "HealthDataRelayKit", resources: [.copy("Resources/Templates")]),
         .testTarget(name: "HealthDataRelayKitTests", dependencies: ["HealthDataRelayKit"], exclude: ["Golden"]),
     ]
 )

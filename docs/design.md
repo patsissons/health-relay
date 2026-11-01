@@ -62,6 +62,13 @@ weeks and longer add their nights together.
 **Large reads.** Everything comes in pages of 2,000 samples and nothing past the
 current page is held, because one metric can run to millions of samples.
 
+## Templates
+
+A **template** is a text file describing how what was read becomes the text
+delivered. [templates.md](templates.md) is its contract. The native format stays
+native code, with its batching and bytes unchanged. A template twin of it ships for
+people to copy, and a test holds it to the fixture byte for byte.
+
 ## Destinations
 
 The app holds a list of destinations. Each has a type, a name, a paused
