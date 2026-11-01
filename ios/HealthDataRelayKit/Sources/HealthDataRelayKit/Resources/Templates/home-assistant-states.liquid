@@ -1,0 +1,14 @@
+---
+name: Home Assistant Sensors
+description: Each metric's latest value as a Home Assistant sensor, one request per metric, for its REST API at /api/states.
+format: json
+data: [metrics]
+partition: metric
+skip_empty: true
+---
+{%- assign m = metrics[partition.metric] -%}
+{%- for p in m.data -%}
+{%- if forloop.last -%}
+{"state":{% if p.qty or p.qty == 0 %}{{ p.qty | round: 2 }}{% elsif p.Avg %}{{ p.Avg | round: 1 }}{% elsif p.totalSleep %}{{ p.totalSleep | round: 2 }}{% elsif p.systolic %}{{ p.systolic | round }}{% else %}0{% endif %},"attributes":{"friendly_name":{{ m.title }},"unit_of_measurement":{{ m.units }},"last_recorded":{{ p.date | iso8601 }},"source":{{ export.device.name }}}}
+{%- endif -%}
+{%- endfor -%}

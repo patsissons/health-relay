@@ -1,10 +1,11 @@
-# Generates HealthRelay.xcodeproj: `cd ios && xcodegen`. The project is not
+# Generates HealthDataRelay.xcodeproj: `cd ios && xcodegen`. The project is not
 # committed; this file is its source. Signing: copy Local.xcconfig.example
 # to Local.xcconfig and set your team.
-name: HealthRelay
+name: HealthDataRelay
 options:
   deploymentTarget:
     iOS: "17.0"
+    macOS: "14.0"
   createIntermediateGroups: true
   developmentLanguage: en
 configFiles:
@@ -14,48 +15,62 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "0.1"
-    CURRENT_PROJECT_VERSION: "1"
+    # The screens' strings go in HealthDataRelay/Localizable.xcstrings as Xcode builds. English is all that's translated so far.
+    SWIFT_EMIT_LOC_STRINGS: YES
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+    CURRENT_PROJECT_VERSION: "3"
 packages:
-  HealthRelayKit:
-    path: HealthRelayKit
+  HealthDataRelayKit:
+    path: HealthDataRelayKit
 targets:
-  HealthRelay:
+  HealthDataRelay:
     type: application
-    platform: iOS
+    platform: auto
+    supportedDestinations: [iOS, visionOS]
     sources:
-      - path: HealthRelay
+      - path: HealthDataRelay
     dependencies:
-      - package: HealthRelayKit
+      - package: HealthDataRelayKit
+      # There's no Home Screen for it on Vision Pro.
+      - target: HealthDataRelayWidgets
+        destinationFilters: [iOS]
     info:
-      path: HealthRelay/Info.plist
+      path: HealthDataRelay/Info.plist
       properties:
-        CFBundleDisplayName: Health Relay
+        CFBundleDisplayName: Health Data Relay
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
         LSRequiresIPhoneOS: true
         UILaunchScreen: {}
-        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
-        NSHealthShareUsageDescription: Health Relay reads your Health data to send each day to the destinations you add. Nothing is sent anywhere else.
+        UISupportedInterfaceOrientations~iphone: [UIInterfaceOrientationPortrait]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        NSHealthShareUsageDescription: Health Data Relay reads your Health data to send each day to the destinations you add. Nothing is sent anywhere else.
         UIBackgroundModes: [fetch, processing]
-        BGTaskSchedulerPermittedIdentifiers: [com.patsissons.healthrelay.refresh]
+        BGTaskSchedulerPermittedIdentifiers: [com.patsissons.healthdatarelay.refresh, com.patsissons.healthdatarelay.processing]
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-        # Setup links (healthrelay://destination?url=...), usually scanned from a QR code.
+        # OAuth client IDs, from Local.xcconfig. Without them, Dropbox and Google Drive say they aren't set up.
+        HDRDropboxClientID: $(HDR_DROPBOX_CLIENT_ID)
+        HDRGoogleClientID: $(HDR_GOOGLE_CLIENT_ID)
+        NSCalendarsFullAccessUsageDescription: Health Data Relay writes events to the calendar you choose, for a pipeline you set up to do that. It doesn't read your other events.
+        NSLocalNetworkUsageDescription: Health Data Relay sends your Health data to destinations you add on your own network, and answers tools you allow when you turn on its server.
+        # Setup links (healthdatarelay://destination?url=...), usually scanned from a QR code.
         CFBundleURLTypes:
-          - CFBundleURLName: com.patsissons.healthrelay.setup
-            CFBundleURLSchemes: [healthrelay]
+          - CFBundleURLName: com.patsissons.healthdatarelay.setup
+            CFBundleURLSchemes: [healthdatarelay, $(HDR_GOOGLE_REDIRECT_SCHEME)]
     entitlements:
-      path: HealthRelay/HealthRelay.entitlements
+      path: HealthDataRelay/HealthDataRelay.entitlements
       properties:
         com.apple.developer.healthkit: true
         com.apple.developer.healthkit.access: []
         com.apple.developer.healthkit.background-delivery: true
+        com.apple.security.application-groups: [group.com.patsissons.healthdatarelay]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.patsissons.healthrelay
-        PRODUCT_NAME: HealthRelay
-        TARGETED_DEVICE_FAMILY: "1"
+        PRODUCT_BUNDLE_IDENTIFIER: com.patsissons.healthdatarelay
+        PRODUCT_NAME: HealthDataRelay
+        TARGETED_DEVICE_FAMILY: "1,2,7"
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
@@ -64,29 +79,95 @@ targets:
       configs:
         Debug:
           INFOPLIST_KEY_NSHealthUpdateUsageDescription: Debug builds write synthetic samples so the app can be tried on a simulator.
-  HealthRelayUITests:
+        # App Store validation requires the key for HealthKit apps. Release asks for no write access, so iOS never shows it.
+        Release:
+          INFOPLIST_KEY_NSHealthUpdateUsageDescription: Health Data Relay does not add to or change your Health data. It only reads it.
+  HealthDataRelayWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: HealthDataRelayWidgets
+    dependencies:
+      - package: HealthDataRelayKit
+    info:
+      path: HealthDataRelayWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Health Data Relay
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: HealthDataRelayWidgets/HealthDataRelayWidgets.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.patsissons.healthdatarelay]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.patsissons.healthdatarelay.widgets
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: YES
+  # The Mac dashboard. A Mac has no Health data: this reads a phone's server.
+  HealthDataRelayMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: HealthDataRelayMac
+    dependencies:
+      - package: HealthDataRelayKit
+    info:
+      path: HealthDataRelayMac/Info.plist
+      properties:
+        CFBundleDisplayName: Health Data Relay
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.healthcare-fitness
+        NSLocalNetworkUsageDescription: Health Data Relay reads Health data from your iPhone over your own network.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    entitlements:
+      path: HealthDataRelayMac/HealthDataRelayMac.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.patsissons.healthdatarelay.mac
+        PRODUCT_NAME: Health Data Relay
+        GENERATE_INFOPLIST_FILE: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Automatic
+  HealthDataRelayUITests:
     type: bundle.ui-testing
     platform: iOS
     sources:
-      - path: HealthRelayUITests
+      - path: HealthDataRelayUITests
     dependencies:
-      - target: HealthRelay
+      - target: HealthDataRelay
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.patsissons.healthrelay.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: com.patsissons.healthdatarelay.uitests
         GENERATE_INFOPLIST_FILE: YES
         CODE_SIGN_STYLE: Automatic
 schemes:
-  HealthRelay:
+  HealthDataRelayMac:
     build:
       targets:
-        HealthRelay: all
+        HealthDataRelayMac: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+  HealthDataRelay:
+    build:
+      targets:
+        HealthDataRelay: all
     run:
       config: Debug
     test:
       config: Debug
       targets:
-        - package: HealthRelayKit/HealthRelayKitTests
-        - name: HealthRelayUITests
+        - package: HealthDataRelayKit/HealthDataRelayKitTests
+        - name: HealthDataRelayUITests
     archive:
       config: Release

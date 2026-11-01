@@ -1,3 +1,6 @@
 // Shared by every configuration. Per-machine settings (the signing team)
 // come from ../Local.xcconfig when it exists; it is not committed.
+HDR_DROPBOX_CLIENT_ID =
+HDR_GOOGLE_CLIENT_ID =
+HDR_GOOGLE_REDIRECT_SCHEME = healthdatarelay-google-unset
 #include? "../Local.xcconfig"

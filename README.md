@@ -1,9 +1,9 @@
-# Health Relay
+# Health Data Relay
 
-Health Relay reads your health data on your phone and delivers each day,
-exactly and incrementally, to destinations you choose: your own server, a
-self-hosted dashboard, any HTTP endpoint that speaks its open schema.
-Nothing leaves the phone except to those destinations.
+Health Data Relay reads your health data on your phone and delivers it, in any
+format, to destinations you choose: your own server, a dashboard, MQTT, email,
+files or your calendar, when you tap Run or on a schedule. Nothing leaves the phone
+except to those destinations.
 
 **Docs and screenshots: [health-relay.lgtm.page](https://health-relay.lgtm.page)**
 
@@ -11,18 +11,25 @@ Nothing leaves the phone except to those destinations.
   receiver ends up with what the phone has, deletions included.
 - **One open schema.** [`docs/schema.md`](docs/schema.md), in Apple
   Health's own terms, versioned by name (`apple-push/1`).
-- **Destinations, not a service.** You add destinations; the app has no
+- **Or any format.** [Templates](docs/templates.md) are text files that write JSON,
+  CSV, Markdown, HTML, GPX or anything else.
+- **Pipelines, not a service.** You add pipelines, each running when you tap
+  Run or on a schedule, to destinations you choose; the app has no
   backend of its own.
 
 ## Platforms
 
 | Directory | Platform | State |
 |---|---|---|
-| [`ios/`](ios/) | iPhone (iOS 17+), SwiftUI, HealthKit | v1 |
+| [`ios/`](ios/) | iPhone and iPad (iOS 17+), SwiftUI, HealthKit | v1 |
+| [`ios/HealthDataRelayMac`](ios/HealthDataRelayMac) | Mac dashboard, reading a phone's server | v1 |
+| [`ios/`](ios/) | Vision Pro | compiled, never run |
 | `android/` | Android, Health Connect | later |
 
 Each platform lives in its own directory and shares no code with the
 others. What they share is the contract at the top level.
+
+Where it stands against Health Auto Export, with the evidence for each feature: [`docs/parity-audit.md`](docs/parity-audit.md).
 
 ## The contract
 

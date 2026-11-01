@@ -2,7 +2,7 @@
 node_modules/
 
 # ios: the project is generated from ios/project.yml (xcodegen)
-ios/HealthRelay.xcodeproj/
+ios/HealthDataRelay.xcodeproj/
 ios/Local.xcconfig
 .build/
 .swiftpm/
@@ -14,3 +14,8 @@ build/
 # secrets
 .env
 .env.*
+
+# Health Auto Export structure: stays local until a decision on publishing it (M2)
+fixtures/hae/
+docs/hae-format.md
+tools/hae/

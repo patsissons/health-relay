@@ -1,0 +1,32 @@
+---
+name: Workout Routes GPX
+description: One GPX file for each workout with a route, ready for mapping and training apps.
+format: gpx
+data: [workouts]
+partition: workout
+skip_empty: true
+filename: "{{ workout.name }}-Route-{{ workout.start | date: '%Y-%m-%d_%H-%M-%S' }}.gpx"
+---
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Health Data Relay" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+  <metadata>
+    <time>{{ workout.start | iso8601 }}</time>
+  </metadata>
+  <trk>
+    <name>{{ workout.name }}</name>
+    <trkseg>
+{%- for p in workout.route %}
+      <trkpt lat="{{ p.latitude }}" lon="{{ p.longitude }}">
+        <ele>{{ p.altitude }}</ele>
+        <time>{{ p.timestamp | iso8601 }}</time>
+        <extensions>
+          <speed>{{ p.speed }}</speed>
+          <course>{{ p.course }}</course>
+          <hAcc>{{ p.horizontalAccuracy }}</hAcc>
+          <vAcc>{{ p.verticalAccuracy }}</vAcc>
+        </extensions>
+      </trkpt>
+{%- endfor %}
+    </trkseg>
+  </trk>
+</gpx>

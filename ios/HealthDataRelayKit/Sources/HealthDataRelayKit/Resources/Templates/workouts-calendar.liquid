@@ -1,0 +1,7 @@
+---
+name: Workouts on a Calendar
+description: Each workout as a calendar event, updated rather than repeated if it runs again.
+format: json
+data: [workouts]
+---
+{"events":[{% for w in workouts %}{"key":{{ w.id }},"title":{{ w.name }},"start":{{ w.start }},"end":{{ w.end }},"notes":{% capture n %}{{ w.duration | divided_by: 60 | round }} minutes{% if w.distance %}, {{ w.distance.qty | round: 2 }} {{ w.distance.units }}{% endif %}{% if w.activeEnergyBurned %}, {{ w.activeEnergyBurned.qty | round }} {{ w.activeEnergyBurned.units }}{% endif %}{% endcapture %}{{ n }}{% if w.location %},"location":{{ w.location }}{% endif %}}{% unless forloop.last %},{% endunless %}{% endfor %}]}

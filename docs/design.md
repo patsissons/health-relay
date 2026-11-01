@@ -1,19 +1,242 @@
-# Health Relay: behaviour
+# Health Data Relay: behaviour
 
-What every platform's Health Relay does, independent of its code. The
+What every platform's Health Data Relay does, independent of its code. The
 schema ([schema.md](schema.md)) says what a push looks like; this says when
 the app sends one, what it puts in it and what it does with the answer, so
 two platforms are the same product and not just the same JSON.
 
+## Pipelines
+
+Everything the app does is a **pipeline**: **Extract** from the health store,
+**Transform** into a format, **Load** into a target, with a **Trigger** saying
+when. Each shows as a card: a manual one has a Run button, a scheduled one
+counts down to its next run.
+
+The default Extract is the days that changed (below), its Transform the in-memory
+`Health Data Relay` format (the schema one batch at a time), and its Load an HTTP
+endpoint, a *destination* below. A template pipeline chooses each of them. Triggers:
+
+- **Manual**: runs only when the user taps Run. The default.
+- **When Health changes**: the triggers under [When to sync](#when-to-sync).
+- **A schedule**: every N minutes, hours, days or weeks after its last run.
+
+- **At a time**: a time of day, on chosen days. A time the clocks skip runs just after it.
+
+A schedule of under a minute runs only while the app is open, since iOS has no background work
+that often. A scheduled template pipeline also asks iOS for its longer processing time, because
+writing output can take more than a refresh allows. Parts of 1 MB or more upload with iOS's
+background transfer service, so they keep going once the app is suspended. The answer is saved, so
+the next run acts on it instead of sending the part again.
+
+A pipeline's id is its destination's, so a token, queue and log saved before
+pipelines existed are its own. State saved before triggers existed needs no
+rewriting: a pipeline with no saved trigger is *when Health changes* if the old
+automatic sync setting was on, and manual if not.
+
+## What a pipeline can read
+
+An Extract says which **sections** it wants (metrics, workouts, symptoms, ECG,
+heart rate notifications, state of mind, cycle tracking, medications), which
+metrics, how much time, and how values combine. The catalog of metrics is wider
+than the native push's and separate from it, so adding a metric can't change
+what an existing receiver gets.
+
+**Range.** Whole days that changed; since the last run; today; yesterday; the
+previous N days; the last N days including today; a fixed range; or asked when
+Run is tapped. Since the last run also picks up older samples that arrived
+late, and a first one looks back 7 days.
+
+**Grouping.** Seconds to years, or automatic, which is minutes, or none, which
+writes each sample as it is. Only buckets with data produce a point. Buckets
+fall on local time: a day is midnight to midnight, so 23 or 25 hours when the
+clocks change, and each of those hours gets its own bucket. Weeks start on the
+phone's first day of the week. A range grows outward to whole buckets, so a
+point is never built from part of its bucket.
+
+**Sources.** Merged is Health's own combined value with overlaps removed, what
+the Health app shows, with `source` listing every contributor. Each source
+gives one point per source. Preferred takes the first listed source with data
+in each bucket and falls back to merged. Without grouping there are no buckets,
+so preferred keeps only the first listed source with any data.
+
+**Sleep.** Summarized sleep is one point per night, dated the morning it ended.
+A gap over 4 hours starts a new night. Several sources often record one night,
+so each moment counts once, for the most specific stage recorded: a stage, then
+plain asleep, then awake, then in bed. There's no sleep point below a day, and
+weeks and longer add their nights together.
+
+**Large reads.** Everything comes in pages of 2,000 samples and nothing past the
+current page is held, because one metric can run to millions of samples.
+
+## Templates
+
+A **template** is a text file describing how what was read becomes the text
+delivered. [templates.md](templates.md) is its contract. The native format stays
+native code, with its batching and bytes unchanged. A template twin of it ships for
+people to copy, and a test holds it to the fixture byte for byte.
+
+The built-in templates are **Metrics JSON v2** (metrics, workouts and any other section turned on,
+in one document, where a section with no data is left out and `metrics` is always there. Other
+sections are opt-in, and medications have an iOS sheet of their own), **Health Report Markdown** (one file per
+section) and **Workout Routes GPX** (one file per workout with a route). Splits and segments are
+worked out from one read of a workout's samples: per kilometre and per mile, assuming even progress
+within a sample, and using only the workout's own source when it has samples, since other sources
+often record the same movement.
+
+## Template library
+
+The **Templates** tab lists the built-ins and the user's own, saved as text files in
+`templates/`. A built-in can be read, shared or copied to edit. An edit that doesn't parse
+can't be saved, so a pipeline can't break on a half-finished change. The editor shows the
+line and column of any mistake, and its preview runs the template on sample data, or on the
+last three days of real data if asked, without sending anything.
+
+Removing a template that a pipeline uses leaves that pipeline asking for another on its card.
+
+## Manual exports
+
+**Export**, on the Pipelines screen, writes a template over chosen dates to a file to share, with
+no pipeline and nothing remembered. It can also export one workout. One file keeps its name, and
+several go in a ZIP, written a piece at a time so a large export costs no memory.
+
+A pipeline can do the same with **Share sheet** as its destination: a run leaves a file on its
+screen, replaced by the next run, and "delivered" means ready to share. A range of **Ask when
+run** asks for dates when Run is tapped, so it needs a manual trigger.
+
+Each run of a template pipeline is recorded with its rows, size and file count, in **Run history**.
+
+## MQTT, Home Assistant and Calendar
+
+**MQTT** publishes each part as one message over MQTT 3.1.1, optionally with TLS, at QoS 0, 1 or 2, retained if
+asked. A part over 64 MB is refused, since a message is held in memory: split it with a partition.
+A refused password stops the pipeline, and an unreachable broker retries. The topic can be a template,
+rendered per part.
+
+**Home Assistant** isn't a target of its own. It's a preset: a web target at `/api/states/sensor.health_<metric>`
+with a long-lived token, and a template writing one sensor per metric that has data.
+
+**Calendar** writes events a template lists as `{"events": [{"key", "title", "start", "end", "allDay", "notes", "location"}]}`.
+Calendar access is asked for when the pipeline is saved, and a run only checks it: a run can be in the background, where a prompt nobody can answer would hold up every
+other pipeline. Which event each key became is saved, so running again updates an event rather than adding one, and an event the
+user deleted is made again. Only events a pipeline made are touched.
+
+## Email
+
+A run sends one email, with its output attached: one file, or a ZIP of several. There's no server of ours.
+
+- **SMTP** runs unattended with the user's own account. STARTTLS is the default and refuses to carry on if a
+  server doesn't offer it, so a password or health data never falls back to the clear. Sending with no TLS is a
+  choice with a warning, for a server on the user's own network. The message streams from a file, so a large
+  attachment costs no memory.
+- **A mail service** (Resend, SendGrid or Postmark) runs unattended with the user's API key, up to 25 MB.
+- **Mail or another app** needs a tap. A run leaves the file ready, with Apple Mail's composer when it's set up and the
+  share sheet for Gmail and others. A run nobody tapped sends a notification saying it's ready.
+
+A retry keeps the same Message-ID, or idempotency key where a service has one, so a server can recognise a repeat.
+
+## Files and cloud storage
+
+A pipeline can save each part as a file in a folder the user picked in the Files app, replacing a file of the same name or keeping both. A folder's file
+appears whole or not at all.
+
+Dropbox and Google Drive are coming soon. They need OAuth clients built into the app, and a build without them offers neither and doesn't show Connected accounts.
+Accounts will be shared in Settings, signed in with OAuth and PKCE, so no secret ships in the app. Their tokens will live in the Keychain, and an expired one
+will refresh on its own.
+
+A large cloud upload will go in 8 MB chunks with its position saved, so an interrupted one carries on where it stopped: Dropbox from the saved offset, and Google by
+asking how much arrived. Google Drive will be able to turn a CSV into a Sheet as it uploads, and its `drive.file` access only reaches files this app made.
+
+**iCloud Drive is off.** Guideline 5.1.3(ii) says apps "may not store personal health information in iCloud", so a folder there is refused until
+Apple has answered whether a file a user chose to put there themselves counts. `Features.iCloudDriveFolders` turns it on.
+
+## The on-device server
+
+Off unless turned on, and running only while the app is open, since iOS suspends a backgrounded app.
+
+**MCP** answers over HTTPS on the phone's network, at `/mcp`, with one tool per section: `health_metrics`, `workouts`, `symptoms`, `ecg`,
+`heart_rate_notifications`, `state_of_mind`, `cycle_tracking` and `medications`. Each takes `start` and `end` dates, metrics also take `metrics` and
+`grouping`, and workouts take `routes` and `detail`, both off by default because routes and splits are long. A tool returns the same JSON a pipeline writes, up to 8 MB. A request needs the bearer token the app shows, compared in constant
+time, and a wrong one gets 401. Its certificate is made on the phone and shown by fingerprint, because no public authority can vouch for a home network.
+It's remade if the phone's address changes, and nothing else can reach the key in the Keychain.
+
+**TCP** is newline-separated JSON-RPC with the same tools, for tools that can't use MCP. It has no password and no encryption, so it's off by default, separate
+from MCP, and the screen says plainly that anyone on the network can read Health data while it's on.
+
+## Links, Shortcuts, widgets and charts
+
+**Links.** `healthdatarelay://pipeline?url=...&name=...` carries a whole pipeline's settings: `format`, `enabled`, `datatype`, `period`, `interval`, `aggregatedata`,
+`aggregatesleep`, `exportversion`, `batchrequests`, `syncinterval`, `syncquantity`, `headers`, `requesttimeout`, `metrics`, `includeroutes`, `includeworkoutmetadata`,
+`workoutsmetadatainterval`, `workouttypes`, `notifyonupdate` and `notifywhenrun`, case-insensitive. A link copied from another export app using `com.HealthExport://automation`
+can be pasted in the same way; the app doesn't register that scheme. A link only fills the editor, for the user to check and save. What can't be carried over is listed
+there. `exportversion=v1` is refused, since a receiver asking for v1 can't read v2.
+
+**Shortcuts** can run a pipeline and read today's value of a metric. **Widgets** show today's values and how pipelines stand, from a small file the app writes to a shared
+folder, so they work without reading Health. A widget's run button holds a random key private to the phone, so no other app can trigger a send with a link.
+
+**Charts** shows a metric over 7 days to a year. It reads when asked, and nothing is sent.
+
+## Other devices
+
+**iPad** runs the same app, in every orientation, with pipeline cards in as many columns as fit. **Vision Pro** builds natively from the same code, with no widgets, since it has
+no Home Screen. Health data exists only where iOS keeps it, so what a Vision Pro can read depends on what visionOS shares with it.
+
+## The Mac dashboard
+
+A Mac has no Health data of its own, so the Mac app reads a phone's MCP server over the network, trusting its certificate only by fingerprint. It needs the address, token and
+fingerprint from the phone's Server screen, and works while the app is open on the phone and both are on one network. It shows metrics and workouts as charts and tables, and keeps
+the last data, so it opens with something when the phone isn't reachable, along with the reason it isn't newer. A wrong certificate is refused before the token is sent.
+
+**There's no iCloud sync.** Guideline 5.1.3(ii) says apps "may not store personal health information in iCloud", so the plan's flagged sync wasn't built: the network path does
+the job with no third party holding the data. It would also need a CloudKit container set up on the developer account.
+
+## Notifications and activity
+
+A pipeline can notify when it fails, when it finishes, and, if scheduled, a few minutes after it's
+due if it hasn't run: iOS can't promise a time, so the reminder is the honest backstop. Notifications
+never hold a health value.
+
+**Settings › Activity** lists what the app did and when. A diagnostics file zips that with each
+pipeline's settings, for a bug report. It leaves out health values, tokens, header values, URL paths,
+pipeline names and template text.
+
+## Delivering a template's output
+
+A run writes each part to disk before anything is sent, in
+`pipelines/<id>/queue/<artifact>/`, under its final name only once it's complete. A
+retry sends those bytes rather than reading Health again, so a retry after new data
+arrives still sends what the run first saw, and a killed app carries on where it
+stopped. A half-written folder is never sent and is cleared at the next run. A
+pipeline's saved position moves only once its output is safe on disk.
+
+Parts deliver in order, and one that's accepted isn't sent again. A failure follows
+the destinations' rules below. A refused part drops the whole artifact, since the rest
+is the same run. A template error needs fixing, so it stops the pipeline rather than
+retrying.
+
+A run that finds output left from an earlier one delivers that and stops, rather than
+also reading a new range: the next run reads from where this left off. Since the last
+run sends nothing if nothing is new. Days that changed always send, because an empty day
+is how a deletion arrives.
+
+A pipeline with its own range collects no dirty days, so it can't hold the shared
+anchors back. One following changed days watches any type outside the native catalog
+with anchors of its own.
+
+The web target sends a request per part, streamed from its file, with any method, headers
+and bearer token, as a body or a file upload. Its address may be a template, rendered per
+part when the output is written. **Test** runs the template over no data, so a receiver
+sees the shape it will get with nothing in it. Automation headers (`automation-name`,
+`automation-id`, `automation-aggregation`, `automation-period`, `session-id`) are on by default,
+and a `session-id` is new per request.
+
 ## Destinations
 
 The app holds a list of destinations. Each has a type, a name, a paused
-flag and its own delivery state. v1 has one type, **HTTP endpoint**: a URL,
-an optional bearer token (kept in the platform's secure store, never in
-plain files), optional extra headers, and the schema as the body. A new
-type (a file in iCloud Drive, MQTT, a templated webhook) implements one
-operation, *deliver this batch and report the verdict*, and reuses
-everything below.
+flag and its own delivery state. The native push has one type, **HTTP endpoint**,
+shown as REST API: a URL, an optional bearer token (kept in the platform's secure
+store, never in plain files), optional extra headers, and the schema as the body.
+Template pipelines have the other types above, and each implements one operation,
+*deliver this and report the verdict*, and reuses everything below.
 
 The user sees the word "destination" and the destination's own name. The
 app never names a particular receiver.
@@ -56,10 +279,15 @@ A day leaves a destination's dirty set only when that destination answered
 after that batch was read (a change that landed mid-flight is sent next
 time).
 
-**Anchors advance only after every unpaused destination has accepted** the
+**Anchors advance only after every pipeline in the run has accepted** the
 batches covering the changes they reported. Until then the next sync asks
 again from the old anchor and re-marks the same days; that is cheap and
-never loses a change.
+never loses a change. A pipeline outside the run is marked like the others and
+keeps its marks, so one that is only ever tapped holds nothing up.
+
+Changes reach back at least 40 days, and as far as the last delivery of the
+pipeline that has gone longest without one, so a pipeline left unused for months
+misses nothing. Older data added by another app does not re-send old days.
 
 ## What a batch holds
 
@@ -97,13 +325,13 @@ and the receiver's message.
 
 ## When to sync
 
-All triggers run the same single sync, serialized: a trigger that arrives
-during a sync waits for it rather than starting a second.
+One run at a time: a trigger that arrives during a run waits for it rather
+than starting a second, and a tapped Run shows as queued. A run covers only the
+pipelines whose trigger wants it, so running one never runs the others.
 
-**Automatic sync is a setting, off by default.** Off, only Sync now (and
-Re-send) syncs; the platform is not asked for change notifications or a
-daily wake, and any it was asked for earlier are cancelled. On, these
-triggers run too:
+With every pipeline manual, the platform is not asked for change notifications
+or a wake, and any it was asked for earlier are cancelled. A pipeline set to
+**when Health changes** runs on these:
 
 - **Health store change notifications**, where the platform has them:
   hourly for most types, daily for sleep, stand hours and mindful
@@ -115,11 +343,34 @@ triggers run too:
 - **Coming to the foreground**, when the last successful sync is more
   than an hour old.
 
-**Sync now** in the app always runs.
+A **scheduled** pipeline is due one interval after its last finished run and
+runs at the first chance after that: the platform's background refresh, a change
+notification, coming to the foreground, or the moment its countdown ends while
+the app is open. The platform decides when background work happens, so the card
+says *Due, waiting for iOS* (or *Due, unlock your iPhone* when a read failed for
+that reason) rather than claim a run. A run that could not finish stays due. A
+failed delivery retries when its backoff ends, without waiting for the next
+interval.
+
+**Run** always tries: it goes after whatever is running and ignores a backoff,
+the same bytes first. A pipeline that needs attention stays stopped until it is
+fixed, and its Run button says so.
+
+**Background time is limited.** A run started by a change notification or the
+platform's refresh starts no more work after **25 seconds**, or as soon as the
+platform says its time is up. It stops between types and batches, so what is
+under way can finish, and the next run carries on. Run and coming to the
+foreground have no limit, and tapping Run during a background run lifts it.
+
+**Saved state is never overwritten by accident.** Delivery progress is saved
+as each batch is accepted, so a killed app does not resend what was delivered.
+A state file that cannot be read yet (a wake before the first unlock) is left
+alone and nothing is saved until it can be. One that cannot be decoded is set
+aside, and the app says so and starts fresh.
 
 **Known limit (iOS):** Health data cannot be read while the phone is
 locked, so changes recorded overnight are pushed after the first unlock.
-The Status screen says so.
+The Settings screen says so.
 
 ## What the app reads
 
@@ -135,6 +386,6 @@ anything not in the schema.
 
 ## Status the app shows
 
-Per destination: last success, dirty day count, needs attention, the
-retry queue and the log. Overall: last sync, the locked-phone limit, and
-per type whether any data arrived in the last 30 days.
+Per pipeline: last success, dirty day count, needs attention, the retry
+queue, the log, and when it runs next. Overall: the locked-phone limit, and per
+type whether any data arrived in the last 30 days.

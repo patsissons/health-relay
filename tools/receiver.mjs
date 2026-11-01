@@ -1,4 +1,4 @@
-// A throwaway receiver for the Health Relay schema (docs/schema.md): accepts
+// A throwaway receiver for the Health Data Relay schema (docs/schema.md): accepts
 // a push, checks its shape, prints what it carries and answers as the schema
 // says. It stores nothing unless --out is given. Any platform's app is tested
 // against it; it proves the app assumes nothing about one destination.
@@ -8,6 +8,9 @@
 // --token     require Authorization: Bearer <token> (401 otherwise)
 // --out       write each accepted body to <dir>/<n>.json, as received
 // --fail      answer every push with this status (to exercise an app's retry rules)
+//
+// A path starting /any takes any body in any format, for what a template writes:
+// no shape check, written to <dir>/<n>.any with --out.
 import { createServer } from 'node:http'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
@@ -58,6 +61,7 @@ function main() {
   }
   const server = createServer((req, res) => {
     if (req.method !== 'POST') return answer(res, 405, { ok: false, error: 'POST a push' })
+    if (opts.token && req.headers.authorization !== `Bearer ${opts.token}`) console.log(`${new Date().toISOString()} 401 ${req.url} authorization=${req.headers.authorization ? 'wrong' : 'missing'}`)
     if (opts.token && req.headers.authorization !== `Bearer ${opts.token}`) return answer(res, 401, { ok: false, error: 'token_unknown' })
     const chunks = []
     let size = 0
@@ -67,6 +71,12 @@ function main() {
     })
     req.on('end', () => {
       const stamp = new Date().toISOString()
+      if (req.url.startsWith('/any')) {
+        n++
+        if (opts.out) writeFileSync(path.join(opts.out, `${String(n).padStart(4, '0')}.any`), Buffer.concat(chunks))
+        console.log(`${stamp} #${n} ${size} bytes, ${req.headers['content-type']}, ${req.headers['automation-name'] || 'no automation name'}`)
+        return answer(res, 200, { ok: true, message: `Received ${size} bytes` })
+      }
       if (size > MAX_BYTES) return answer(res, 413, { ok: false, error: 'too_large' })
       let body
       try {

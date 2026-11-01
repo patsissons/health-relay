@@ -8,7 +8,7 @@ Worker with static assets (`wrangler.jsonc`, custom domain
 pnpm install
 pnpm dev                 # copies ../docs into src/content/docs/reference, then serves
 pnpm build
-node scripts/og-image.mjs  # re-render public/og.png from the Status screenshot (needs Google Chrome)
+node scripts/og-image.mjs  # re-render public/og.png from the Pipelines screenshot (needs Google Chrome)
 pnpm run deploy          # needs CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID (../.env)
 ```
 

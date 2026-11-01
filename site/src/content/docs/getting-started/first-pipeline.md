@@ -1,0 +1,84 @@
+---
+title: Your first pipeline
+description: Point a pipeline at an HTTP endpoint, test it and send your first days.
+sidebar:
+  order: 2
+---
+
+A [**pipeline**](/guides/pipelines/) takes days from Health and delivers them
+to a destination, when you tap Run or on a schedule. This page sets up the
+simplest one: any HTTP endpoint that accepts [the schema](/reference/schema/), such
+as your own server, a self-hosted dashboard or a home automation webhook. You can
+add as many as you like, and they never hold each other up. For other formats and
+destinations, see [Pipelines](/guides/pipelines/#templates).
+
+## Scan a setup code
+
+If your receiver shows a **Health Data Relay QR code** when it gives you a
+token, point the iPhone's Camera at it and tap **Open in Health Data Relay**.
+The pipeline editor opens with the name, URL and token filled in.
+Check the host it names is where you want your Health data to go, then tap
+**Save**. Nothing is added until you do.
+
+Scanning a new code for a URL you already have (say, after replacing its
+token) updates that pipeline instead of adding another.
+
+Receivers: the link format is in
+[Writing a receiver](/reference/receivers/#setup-links-and-qr-codes).
+
+## Add it by hand
+
+1. On the **Pipelines** tab, tap **+**.
+2. Fill in:
+   - **Name**: anything; it's how the app labels the pipeline.
+   - **Transform**: leave it on **Health Data Relay**.
+   - **Type**, under Destination: **REST API**.
+   - **URL**: the endpoint, `https://` (or `http://` on your local
+     network).
+   - **Bearer token**: if the receiver gave you one. It is sent as
+     `Authorization: Bearer <token>` and kept in the iPhone's Keychain.
+   - **Extra headers**: only if your receiver needs them.
+   - **Trigger**: **Manual** runs when you tap Run. You can change it later.
+3. Tap **Save**.
+
+## Test it
+
+Tap the pipeline's card, then **Test**. Health Data Relay sends an empty push
+(no days, no data) and shows the receiver's answer. Every receiver of the
+schema answers it with success, so a green `200` means the URL and token
+are right.
+
+| You see | It means |
+|---|---|
+| `200` (or any `2xx`) | Ready. |
+| `401` or `403` | The token is wrong or was revoked. |
+| `400` | The endpoint answered, but it doesn't speak the schema. |
+| `404` | Check the URL's path. |
+| No answer | The phone can't reach the URL: a typo, a firewall, or a server that is down. |
+
+## The first run
+
+Go back and tap **Run**. A new pipeline first sends the **last 30 days**, oldest
+first, one day per request, so the first useful data lands within seconds and a
+failure costs one day, not thirty. After that, each run sends only the days that
+changed.
+
+The card reads **Up to date** when everything has been delivered. Open it for
+**Deliveries**, with the receiver's answer to each.
+
+Older history is not sent. If your receiver needs years of history, import
+a full Apple Health export into it once (Health app › your picture ›
+Export All Health Data) and let Health Data Relay keep the recent days current.
+
+## Try it without a server
+
+The repository includes a small receiver that prints what it gets. On a
+Mac on the same network as your phone:
+
+```sh
+node tools/receiver.mjs --token secret
+```
+
+Add a pipeline with URL `http://<your Mac's IP>:8787` and token `secret`.
+Each push shows up in the terminal with its days and per-type counts. Add
+`--out pushes` to save every body for a closer look.

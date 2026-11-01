@@ -40,7 +40,7 @@ const html = `<!doctype html>
   }
 </style>
 <div class="text">
-  <div class="brand"><img src="${logo}">Health Relay</div>
+  <div class="brand"><img src="${logo}">Health Data Relay</div>
   <h1>Your Apple Health data, delivered where you choose</h1>
   <p>Exact, incremental sync from your iPhone to your own destinations, in one open schema.</p>
 </div>

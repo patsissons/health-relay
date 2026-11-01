@@ -1,0 +1,41 @@
+---
+name: Health Summary HTML
+description: A page you can open anywhere, with a table for each metric and a list of workouts.
+format: html
+data: [metrics, workouts]
+filename: "health-summary-{{ export.end | date: '%Y-%m-%d' }}.html"
+---
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Health summary</title>
+<style>
+body { font: 16px/1.5 system-ui, sans-serif; margin: 2rem auto; max-width: 48rem; padding: 0 1rem; }
+table { border-collapse: collapse; width: 100%; margin-bottom: 2rem; }
+th, td { border-bottom: 1px solid #ddd; padding: .4rem .6rem; text-align: left; }
+td.n { text-align: right; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<h1>Health summary</h1>
+<p>{{ export.start | date: '%B %e, %Y' }} to {{ export.end | date: '%B %e, %Y' }}, from {{ export.device.name }}.</p>
+{% for m in metrics %}
+<h2>{{ m.title }}</h2>
+<table>
+<thead><tr><th>Date</th><th>Value</th><th>Source</th></tr></thead>
+<tbody>
+{% for p in m.data limit:400 %}<tr><td>{{ p.date | date: '%b %e %H:%M' }}</td><td class="n">{% if p.qty %}{{ p.qty | round: 2 }}{% elsif p.Avg %}{{ p.Avg | round: 1 }} ({{ p.Min | round: 1 }}–{{ p.Max | round: 1 }}){% elsif p.totalSleep %}{{ p.totalSleep | round: 2 }}{% elsif p.systolic %}{{ p.systolic | round }}/{{ p.diastolic | round }}{% endif %} {{ m.units }}</td><td>{{ p.source }}</td></tr>
+{% endfor %}</tbody>
+</table>
+{% endfor %}
+{% if workouts.first %}<h2>Workouts</h2>
+<table>
+<thead><tr><th>When</th><th>Workout</th><th>Minutes</th></tr></thead>
+<tbody>
+{% for w in workouts %}<tr><td>{{ w.start | date: '%b %e %H:%M' }}</td><td>{{ w.name }}</td><td class="n">{{ w.duration | divided_by: 60 | round }}</td></tr>
+{% endfor %}</tbody>
+</table>
+{% endif %}</body>
+</html>

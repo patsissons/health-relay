@@ -1,0 +1,66 @@
+---
+name: Health Report Markdown
+description: One Markdown file per data type, with front matter and tables, for notes apps like Obsidian.
+format: markdown
+data: [metrics, workouts]
+partition: section
+filename: "{% if partition.key == 'metrics' %}HealthMetrics{% else %}Workouts{% endif %}-{{ export.start | date: '%Y-%m-%d' }}-{{ export.end | date: '%Y-%m-%d' }}.md"
+---
+---
+tags:
+  - health-data-relay
+health_format: markdown
+health_export_version: v2
+health_data_type: {% if partition.key == 'metrics' %}healthMetrics{% else %}workouts{% endif %}
+health_period_start: {{ export.start | iso8601 }}
+health_period_end: {{ export.end | iso8601 }}
+health_generated_at: {{ export.generated_at | iso8601 }}
+---
+{% if partition.key == 'metrics' %}
+# Health Metrics
+{% for m in metrics %}
+## {{ m.name }}
+
+### Summary
+
+| Field | Value |
+|---|---|
+| name | {{ m.title }} |
+| units | {{ m.units }} |
+
+### Data
+
+{% assign first = m.data.first -%}
+{%- if first.totalSleep or first.totalSleep == 0 -%}
+| asleep | awake | core | date | deep | inBed | inBedEnd | inBedStart | rem | sleepEnd | sleepStart | source | totalSleep |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+{% for p in m.data -%}
+| {{ p.asleep }} | {{ p.awake }} | {{ p.core }} | {{ p.date | iso8601 }} | {{ p.deep }} | {{ p.inBed }} | {{ p.inBedEnd }} | {{ p.inBedStart }} | {{ p.rem }} | {{ p.sleepEnd | iso8601 }} | {{ p.sleepStart | iso8601 }} | {{ p.source }} | {{ p.totalSleep }} |
+{% endfor -%}
+{%- elsif first.Avg -%}
+| Avg | Max | Min | date |
+|---|---|---|---|
+{% for p in m.data -%}
+| {{ p.Avg }} | {{ p.Max }} | {{ p.Min }} | {{ p.date | iso8601 }} |
+{% endfor -%}
+{%- elsif first.systolic -%}
+| date | diastolic | source | systolic |
+|---|---|---|---|
+{% for p in m.data -%}
+| {{ p.date | iso8601 }} | {{ p.diastolic }} | {{ p.source }} | {{ p.systolic }} |
+{% endfor -%}
+{%- else -%}
+| date | qty | source |
+|---|---|---|
+{% for p in m.data -%}
+| {{ p.date | iso8601 }} | {{ p.qty }} | {{ p.source }} |
+{% endfor -%}
+{%- endif -%}
+{% endfor %}
+{%- else %}
+# Workouts
+{% for w in workouts %}
+## {{ w.name }}
+{{ w | markdown_tree: 3 }}
+{% endfor -%}
+{%- endif %}
