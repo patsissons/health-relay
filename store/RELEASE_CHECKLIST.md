@@ -1,5 +1,7 @@
 # Release checklist: Health Data Relay
 
+Draft listing text is in [LISTING.md](LISTING.md). What's proven and what isn't, feature by feature, is in [../docs/parity-audit.md](../docs/parity-audit.md).
+
 What stands between this repo and the first App Review submission, which is
 part of milestone M5. App Store Connect record 6829337117, bundle id
 `com.patsissons.healthdatarelay`, SKU `healthdatarelay`, primary language
@@ -38,6 +40,15 @@ holder.
       Both are written and tested against simulated servers only. Google may require app verification
       for `drive.file` at scale.
 
+## Before a public release (human)
+
+- [ ] Legal review of matching another app's data shapes and of naming it in the migration guide
+      (`site/src/content/docs/guides/moving-from-health-auto-export.md`). Its terms say users may not
+      "reproduce, distribute, or create derivative works". `docs/hae-format.md` and `fixtures/hae/` stay out of
+      git until this is settled.
+- [ ] The Mac dashboard needs its own App Store Connect record, or a notarized download.
+- [ ] Vision Pro: install its simulator and run it before listing that platform.
+
 ## Site
 
 - [ ] Privacy policy hosted publicly, covering what the app reads, that it has
@@ -59,7 +70,7 @@ holder.
 | Content rights | Set up in App Information |
 | Price | Free, no in-app purchases |
 | Screenshots | UI test on iPhone 18 Pro Max, for 6.9-inch |
-| Description, keywords, review notes | Say how to reach the demo receiver |
+| Description, keywords, review notes | Drafted in LISTING.md. Say how to reach the demo receiver |
 | App Review contact | Name, phone and email |
 
 ## Submit (human)

@@ -91,7 +91,7 @@ the native format out field by field.
 To write your own, tap **New template**, or copy a built-in and change it. **Preview** shows
 what it writes on sample data, or on your own last three days, and a mistake shows its line
 and column. Templates are text files, so you can share them and bring them in with
-**Import a file**. [The template reference](https://github.com/patsissons/health-relay/blob/main/docs/templates.md)
+**Import a file**. [The template reference](/reference/templates/)
 lists everything a template can use.
 
 ## Exporting once

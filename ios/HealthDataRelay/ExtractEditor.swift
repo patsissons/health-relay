@@ -95,19 +95,62 @@ struct ExtractEditor: View {
         }
 
         Section {
-            Picker("Sources", selection: Binding {
-                if case .eachSource = spec.sources { return 1 }
-                return 0
-            } set: { spec.sources = $0 == 1 ? .eachSource : .merged }) {
+            Picker("Sources", selection: sourceChoice) {
                 Text("Merged, as Health shows").tag(0)
                 Text("Each source separately").tag(1)
+                Text("Prefer certain sources").tag(2)
+            }
+            .accessibilityIdentifier("sources")
+            if case .preferred = spec.sources {
+                TextField("Sources, in order", text: preferredText)
+                    .autocorrectionDisabled()
+                    .accessibilityIdentifier("preferred-sources")
             }
             Picker("Units", selection: Binding {
-                spec.units == .imperial ? 1 : 0
-            } set: { spec.units = $0 == 1 ? .imperial : UnitPreferences() }) {
+                spec.units.byDimension[.mass] == "lb" ? 1 : 0
+            } set: { choice in
+                let energy = spec.units.byDimension[.energy]
+                spec.units = choice == 1 ? .imperial : UnitPreferences()
+                if let energy { spec.units.byDimension[.energy] = energy }
+            }) {
                 Text("Metric").tag(0)
                 Text("US").tag(1)
             }
+            Picker("Energy", selection: Binding {
+                spec.units.byDimension[.energy] ?? "kcal"
+            } set: { spec.units.byDimension[.energy] = $0 == "kcal" ? nil : $0 }) {
+                Text("kcal").tag("kcal")
+                Text("kJ").tag("kJ")
+            }
+        } footer: {
+            if case .preferred = spec.sources {
+                Text("Names as the Health app shows them, separated by commas. Each value comes from the first one listed that has data for it, or Health's merged value if none do.")
+            }
+        }
+    }
+
+    private var sourceChoice: Binding<Int> {
+        Binding {
+            switch spec.sources {
+            case .merged: 0
+            case .eachSource: 1
+            case .preferred: 2
+            }
+        } set: { choice in
+            switch choice {
+            case 1: spec.sources = .eachSource
+            case 2: spec.sources = .preferred([])
+            default: spec.sources = .merged
+            }
+        }
+    }
+
+    private var preferredText: Binding<String> {
+        Binding {
+            if case .preferred(let names) = spec.sources { return names.joined(separator: ", ") }
+            return ""
+        } set: { text in
+            spec.sources = .preferred(text.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty })
         }
     }
 
