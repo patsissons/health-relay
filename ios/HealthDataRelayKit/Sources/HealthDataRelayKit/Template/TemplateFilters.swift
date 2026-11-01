@@ -3,7 +3,7 @@ import Foundation
 /// Liquid's standard filters, plus `json`, `raw`, `iso8601` and `group_by`.
 enum TemplateFilters {
     /// Filters that need every row of a list in hand.
-    static let takesLists: Set<String> = ["sort", "sort_natural", "map", "where", "group_by", "join", "first", "last", "size", "reverse", "uniq", "compact", "concat", "slice", "sum"]
+    static let takesLists: Set<String> = ["sort", "sort_natural", "map", "where", "group_by", "join", "first", "last", "size", "reverse", "uniq", "compact", "concat", "slice", "sum", "markdown_tree"]
 
     static let names: Set<String> = takesLists.union([
         "default", "date", "iso8601", "json", "raw", "escape", "escape_once", "url_encode", "url_decode",
@@ -39,6 +39,8 @@ enum TemplateFilters {
 
         switch name {
         // Values
+        case "markdown_tree":
+            return .object(MarkdownTree(value: value, level: args.isEmpty ? 2 : Int(num(arg(0)))))
         case "default":
             let fallback = !value.isTruthy || value.isEmptyish
             return fallback ? arg(0) : value

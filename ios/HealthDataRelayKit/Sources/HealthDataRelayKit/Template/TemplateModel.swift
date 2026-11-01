@@ -31,8 +31,12 @@ public struct TemplatePartition: Sendable {
 struct PointObject: TemplateObject {
     let point: MetricPoint
     let units: String
+    /// Writes only `date`, `qty` and `source`: a running total's samples are
+    /// many and short, so their bounds stay out of JSON. A template can still ask.
+    var compact = false
 
     var keys: [String] {
+        if compact { return ["date", "qty", "source"] }
         var out: [String] = []
         if point.avg != nil { out.append("Avg") }
         if point.max != nil { out.append("Max") }
@@ -138,15 +142,16 @@ final class MetricObject: TemplateObject, @unchecked Sendable {
         let units = units
         let peeked = firstPage
         let pagerAfterPeek = firstPager
+        let compact = metric.form == .total && metric.group == .activity
         return LazyList(plainItems: true) {
             var pager = pagerAfterPeek ?? extractor.points(of: metric)
             var pending = peeked
             return PageReader {
                 if let page = pending {
                     pending = nil
-                    return page.map { .object(PointObject(point: $0, units: units)) }
+                    return page.map { .object(PointObject(point: $0, units: units, compact: compact)) }
                 }
-                return try await pager.next()?.map { .object(PointObject(point: $0, units: units)) }
+                return try await pager.next()?.map { .object(PointObject(point: $0, units: units, compact: compact)) }
             }
         }
     }
@@ -353,60 +358,6 @@ struct ECGObject: TemplateObject {
     }
 }
 
-/// A workout. Statistics are named the way `MetricCatalog.workoutStatistics`
-/// names them; its route loads when asked for.
-struct WorkoutObject: TemplateObject {
-    let workout: WorkoutDetail
-    let extractor: Extractor
-
-    private static func quantity(_ qty: Double?, _ units: String) -> TemplateValue? {
-        qty.map { .object(DictionaryObject(["qty": .number($0), "units": .string(units)])) }
-    }
-
-    var keys: [String] {
-        var out = ["id", "name", "start", "end", "duration", "source"]
-        if workout.isIndoor != nil { out += ["isIndoor", "location"] }
-        return out
-    }
-
-    func value(_ key: String) -> TemplateValue? {
-        let w = workout
-        switch key {
-        case "id": return .string(w.id)
-        case "name": return .string(w.name)
-        case "activity_type": return .string(w.activityType)
-        case "start": return .date(w.start)
-        case "end": return .date(w.end)
-        case "duration": return .number(w.duration)
-        case "isIndoor": return w.isIndoor.map { .bool($0) }
-        case "location": return w.isIndoor.map { .string($0 ? "Indoor" : "Outdoor") }
-        case "source": return .object(DictionaryObject(["name": .string(w.source), "identifier": .string(w.sourceIdentifier)]))
-        case "metadata": return .object(DictionaryObject(w.metadata.mapValues { .string($0) }))
-        case "has_route": return .bool(w.hasRoute)
-        case "statistics":
-            return .object(DictionaryObject(w.statistics.mapValues(Self.statistic)))
-        case "route":
-            guard w.hasRoute, extractor.spec.workouts.routes else { return .array([]) }
-            let extractor = extractor
-            return .lazy(LazyList(plainItems: true) {
-                var pager = extractor.route(of: w)
-                return PageReader { try await pager.next()?.map { .object(RouteObject(point: $0)) } }
-            })
-        default:
-            return w.statistics[key].map(Self.statistic)
-        }
-    }
-
-    private static func statistic(_ s: WorkoutStatistic) -> TemplateValue {
-        var fields: [String: TemplateValue] = ["units": .string(s.unit)]
-        if let v = s.sum { fields["sum"] = .number(v) }
-        if let v = s.avg { fields["avg"] = .number(v) }
-        if let v = s.min { fields["min"] = .number(v) }
-        if let v = s.max { fields["max"] = .number(v) }
-        return .object(DictionaryObject(fields))
-    }
-}
-
 struct RouteObject: TemplateObject {
     let point: RoutePoint
 
@@ -491,6 +442,8 @@ public struct PartitionPlanner: Sendable {
 
 /// A finished part: what it's called and how much was written.
 public struct RenderedPart: Sendable, Equatable {
+    /// Which `sink` call this part went to; a skipped part leaves a gap.
+    public var index: Int
     public var key: String
     public var filename: String
     public var contentType: String
@@ -538,6 +491,7 @@ public struct TemplateTransformer: Sendable {
         let planner = PartitionPlanner(calendar: extractor.calendar)
         var out: [RenderedPart] = []
         var allGlobals: [[String: TemplateSendable]] = []
+        var sinkIndex = 0
         var partitions = try await planner.partitions(template.header.partition, extractor: extractor)
         if template.onlyFirstPartition {
             // With no data a day or workout partition has no parts at all, so
@@ -552,7 +506,10 @@ public struct TemplateTransformer: Sendable {
             let counted = CountingSink(try sink(partition, name))
             let renderer = TemplateRenderer(format: template.header.format, timeZone: export.timeZone, globals: globals, sink: counted, limits: limits)
             try await renderer.run(template.body)
-            out.append(RenderedPart(key: partition.key, filename: name, contentType: template.header.contentType ?? template.header.format.contentType, bytes: counted.bytes, rows: renderer.dataRows))
+            sinkIndex += 1
+            // A workout with no route has no file, for one.
+            if template.header.skipEmpty && renderer.dataRows == 0 { continue }
+            out.append(RenderedPart(index: sinkIndex - 1, key: partition.key, filename: name, contentType: template.header.contentType ?? template.header.format.contentType, bytes: counted.bytes, rows: renderer.dataRows))
             allGlobals.append(globals.mapValues { TemplateSendable(value: $0) })
         }
         return RenderedRun(parts: out, globals: allGlobals, timeZone: export.timeZone, limits: limits)

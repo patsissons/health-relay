@@ -314,9 +314,13 @@ public struct WorkoutDetail: Sendable, Equatable {
     public var elevationAscended: Double?
     public var averageSpeed: Double?
     public var maximumSpeed: Double?
+    /// Metabolic equivalents, kcal per hour per kilogram.
+    public var averageMETs: Double?
+    /// The Fitness app's 1 to 10 rating when one was recorded.
+    public var estimatedEffort: Double?
     public var hasRoute: Bool
 
-    public init(id: String = UUID().uuidString, activityType: String, activityTypeCode: Int = 0, name: String, source: String, sourceIdentifier: String = "", start: Date, end: Date, duration: Double, isIndoor: Bool? = nil, statistics: [String: WorkoutStatistic] = [:], activities: [Activity] = [], events: [Event] = [], metadata: [String: String] = [:], temperature: Double? = nil, humidity: Double? = nil, elevationAscended: Double? = nil, averageSpeed: Double? = nil, maximumSpeed: Double? = nil, hasRoute: Bool = false) {
+    public init(id: String = UUID().uuidString, activityType: String, activityTypeCode: Int = 0, name: String, source: String, sourceIdentifier: String = "", start: Date, end: Date, duration: Double, isIndoor: Bool? = nil, statistics: [String: WorkoutStatistic] = [:], activities: [Activity] = [], events: [Event] = [], metadata: [String: String] = [:], temperature: Double? = nil, humidity: Double? = nil, elevationAscended: Double? = nil, averageSpeed: Double? = nil, maximumSpeed: Double? = nil, averageMETs: Double? = nil, estimatedEffort: Double? = nil, hasRoute: Bool = false) {
         self.id = id
         self.activityType = activityType
         self.activityTypeCode = activityTypeCode
@@ -336,6 +340,8 @@ public struct WorkoutDetail: Sendable, Equatable {
         self.elevationAscended = elevationAscended
         self.averageSpeed = averageSpeed
         self.maximumSpeed = maximumSpeed
+        self.averageMETs = averageMETs
+        self.estimatedEffort = estimatedEffort
         self.hasRoute = hasRoute
     }
 }

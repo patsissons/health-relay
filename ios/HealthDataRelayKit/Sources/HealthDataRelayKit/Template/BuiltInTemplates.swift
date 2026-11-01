@@ -7,9 +7,11 @@ public enum BuiltInTemplates {
     public static let healthDataRelay = "health-data-relay"
 
     public static let metricsJSONv2 = "metrics-json-v2"
+    public static let healthReportMarkdown = "health-report-markdown"
+    public static let workoutRoutesGPX = "workout-routes-gpx"
 
     /// What the app offers to start from, in order.
-    public static let all = [healthDataRelay, metricsJSONv2]
+    public static let all = [healthDataRelay, metricsJSONv2, healthReportMarkdown, workoutRoutesGPX]
 
     public static func source(_ id: String) -> String? {
         guard let url = Bundle.module.url(forResource: id, withExtension: "liquid", subdirectory: "Templates") else { return nil }

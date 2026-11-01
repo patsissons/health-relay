@@ -175,7 +175,17 @@ extension LiveHealthStore: HealthQuerying {
                              elevationAscended: (metadata[HKMetadataKeyElevationAscended] as? HKQuantity)?.doubleValue(for: .meter()),
                              averageSpeed: (metadata[HKMetadataKeyAverageSpeed] as? HKQuantity)?.doubleValue(for: .meter().unitDivided(by: .second())),
                              maximumSpeed: (metadata[HKMetadataKeyMaximumSpeed] as? HKQuantity)?.doubleValue(for: .meter().unitDivided(by: .second())),
+                             averageMETs: (metadata[HKMetadataKeyAverageMETs] as? HKQuantity)?.doubleValue(for: HKUnit(from: "kcal/(hr*kg)")),
+                             estimatedEffort: await effort(of: w),
                              hasRoute: hasRoute)
+    }
+
+    /// The effort rating recorded during a workout, if any.
+    private func effort(of w: HKWorkout) async -> Double? {
+        guard #available(iOS 18.0, *), let (type, unit) = Self.resolve(HKQuantityTypeIdentifier.estimatedWorkoutEffortScore.rawValue, unit: "appleEffortScore") else { return nil }
+        let predicate = HKQuery.predicateForSamples(withStart: w.startDate, end: w.endDate)
+        let found = try? await HKSampleQueryDescriptor(predicates: [.quantitySample(type: type, predicate: predicate)], sortDescriptors: [SortDescriptor(\.startDate)], limit: 1).result(for: healthStore)
+        return found?.first?.quantity.doubleValue(for: unit)
     }
 
     private static func statistics(_ all: [HKQuantityType: HKStatistics]) -> [String: WorkoutStatistic] {

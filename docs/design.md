@@ -69,6 +69,11 @@ delivered. [templates.md](templates.md) is its contract. The native format stays
 native code, with its batching and bytes unchanged. A template twin of it ships for
 people to copy, and a test holds it to the fixture byte for byte.
 
+The built-in templates are **Metrics JSON v2** (every section in one document, where a section
+with no data is left out and `metrics` is always there), **Health Report Markdown** (one file per
+section) and **Workout Routes GPX** (one file per workout with a route). Splits are worked out
+from distance samples, per kilometre and per mile, assuming even progress within a sample.
+
 ## Delivering a template's output
 
 A run writes each part to disk before anything is sent, in

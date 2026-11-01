@@ -120,7 +120,7 @@ struct ArtifactRunner: Sendable {
             var parts: [ArtifactPart] = []
             for (i, part) in rendered.parts.enumerated() {
                 let address = try await rendered.destination(i, destinationTemplate)
-                parts.append(ArtifactPart(key: part.key, filename: part.filename, file: names[i], contentType: part.contentType, bytes: part.bytes, destination: address))
+                parts.append(ArtifactPart(key: part.key, filename: part.filename, file: names[part.index], contentType: part.contentType, bytes: part.bytes, destination: address))
             }
             let artifact = Artifact(createdAt: at, days: days, rows: rows, parts: parts)
             try files.commitArtifact(artifact, from: folder, pipeline: id)

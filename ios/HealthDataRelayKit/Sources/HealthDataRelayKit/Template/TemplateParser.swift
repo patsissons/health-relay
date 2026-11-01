@@ -575,6 +575,8 @@ public struct TemplateHeader: Sendable, Equatable {
     public var filename: String?
     /// Overrides the format's media type.
     public var contentType: String?
+    /// Leaves out a part that read no rows from Health.
+    public var skipEmpty = false
 
     public init() {}
 }
@@ -622,6 +624,7 @@ public struct ParsedTemplate: Sendable {
             case "description": h.description = value
             case "filename": h.filename = value
             case "content_type": h.contentType = value
+            case "skip_empty": h.skipEmpty = value == "true"
             case "format":
                 guard let f = OutputFormat(rawValue: value) else {
                     throw TemplateError(message: "Unknown format '\(value)'. Use \(OutputFormat.allCases.map(\.rawValue).joined(separator: ", ")).", line: number)

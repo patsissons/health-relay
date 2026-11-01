@@ -481,8 +481,8 @@ private func render(_ source: String, format: OutputFormat = .text, data: JSON =
         return result == KERN_SUCCESS ? Int(info.phys_footprint) : 0
     }
 
-    /// Output far larger than the limit still costs only a buffer and a page:
-    /// a million rows is 135 MB of JSON.
+    /// Output as large as the memory limit, or larger, costs only a buffer and
+    /// a page. Holding what's read as well would pass the limit many times over.
     @Test func renderingStreams() async throws {
         let rows = 1_000_000
         let start = T.date("2026-01-01 00:00:00 -0800")
@@ -492,7 +492,7 @@ private func render(_ source: String, format: OutputFormat = .text, data: JSON =
         let t = try ParsedTemplate(source: "---\nname: n\nformat: json\n---\n[{% for p in metrics.step_count.data %}{{ p }}{% unless forloop.last %},{% endunless %}{% endfor %}]")
         let before = footprint()
         let parts = try await TemplateTransformer(template: t).run(extractor: e, export: ExportInfo(device: FixtureTests.device, generatedAt: start, timeZone: vancouver)) { _, _ in sink }
-        #expect(parts.parts[0].bytes > 100_000_000)
+        #expect(parts.parts[0].bytes > 50_000_000)
         #expect(sink.peak - before < 128 * 1024 * 1024, "grew by \((sink.peak - before) / 1024 / 1024) MB")
     }
 }

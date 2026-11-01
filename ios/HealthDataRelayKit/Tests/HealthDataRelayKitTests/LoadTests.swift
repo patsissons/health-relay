@@ -283,6 +283,20 @@ final class Box<T>: @unchecked Sendable {
         #expect(transport.texts == [#"{"data":{"metrics":[]}}"#])
     }
 
+    @Test func aSkippedPartLeavesTheRestDeliverable() async throws {
+        let run = WorkoutDetail(activityType: "Yoga", name: "Yoga", source: "Watch", start: now.addingTimeInterval(-7200), end: now.addingTimeInterval(-6000), duration: 1200)
+        let walk = WorkoutDetail(activityType: "Walking", name: "Walk", source: "Watch", start: now.addingTimeInterval(-3600), end: now.addingTimeInterval(-3000), duration: 600, hasRoute: true)
+        queries.add(run)
+        queries.add(walk, route: [RoutePoint(timestamp: now.addingTimeInterval(-3600), latitude: 1, longitude: 2)])
+        let transport = RecordingTransport()
+        let engine = engine(transport: transport)
+        let spec = ExtractSpec(sections: [.workouts], range: .today)
+        let d = await engine.add(Destination(name: "Web", kind: .target(target)), token: nil, definition: PipelineDefinition(extract: spec, template: .builtIn(BuiltInTemplates.workoutRoutesGPX), templateName: "GPX"))
+        await engine.run(d.id)
+        #expect(transport.parts.map(\.contentType) == ["application/gpx+xml"])
+        #expect(transport.texts[0].contains("lat=\"1\""))
+    }
+
     @Test func oldStateStillLoadsAsNativePipelines() throws {
         let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Golden/state-0.1.json")
         let state = try JSONDecoder().decode(EngineState.self, from: Data(contentsOf: url))
@@ -363,5 +377,237 @@ final class Box<T>: @unchecked Sendable {
         let run = try await TemplateTransformer(template: t).run(extractor: e, export: ExportInfo(device: FixtureTests.device, generatedAt: now, timeZone: vancouver)) { _, _ in MemorySink() }
         #expect(try await run.destination(0, "https://x.test/{{ partition.key }}") == "https://x.test/2026-10-25")
         #expect(try await run.destination(0, "https://x.test/plain") == "https://x.test/plain")
+    }
+}
+
+/// A rich week across every section, in the fake store.
+enum RichData {
+    static func store() -> FakeHealthQuerying {
+        let s = FakeHealthQuerying(calendar: calendar)
+        let noon = T.date("2026-10-24 12:00:00 -0700")
+        s.add("step_count", source: "Watch", at: noon, end: noon.addingTimeInterval(60), 100)
+        s.add("step_count", source: "iPhone", at: noon, end: noon.addingTimeInterval(60), 50)
+        s.add(MetricCatalog.metric(named: "heart_rate")!.identifiers[0], DetailedQuantity(source: "Watch", start: noon, end: noon.addingTimeInterval(60), value: 70, min: 60, max: 90, context: "Active"))
+        s.add(MetricCatalog.metric(named: "heart_rate")!.identifiers[0], DetailedQuantity(source: "Watch", start: noon.addingTimeInterval(120), end: noon.addingTimeInterval(180), value: 75))
+        s.add("heart_rate_variability", at: noon, end: noon.addingTimeInterval(60), 40)
+        s.heartbeatSeries = [HeartbeatSeries(start: noon, end: noon.addingTimeInterval(60), beats: [.init(timeSinceStart: 1, precededByGap: false)])]
+        s.add("weight_body_mass", source: "Scale", at: noon, 80)
+        let sleep = MetricCatalog.metric(named: "sleep_analysis")!.identifiers[0]
+        for (start, end, stage) in [("2026-10-23 23:00:00", "2026-10-24 01:00:00", 3), ("2026-10-24 01:00:00", "2026-10-24 02:00:00", 4), ("2026-10-24 02:00:00", "2026-10-24 06:00:00", 5)] {
+            s.addCategory(sleep, DetailedCategory(source: "Watch", start: T.date(start + " -0700"), end: T.date(end + " -0700"), value: stage))
+        }
+        let fever = MetricCatalog.symptoms.first { $0.id.hasSuffix("Fever") }!
+        s.addCategory(fever.id, DetailedCategory(source: "Health", start: noon, end: noon.addingTimeInterval(3600), value: 3, userEntered: true))
+        let flow = MetricCatalog.cycleTracking.first { $0.id.hasSuffix("MenstrualFlow") }!
+        s.addCategory(flow.id, DetailedCategory(source: "Health", start: noon, end: noon.addingTimeInterval(3600), value: 3, cycleStart: true))
+        let high = MetricCatalog.notifications.first { $0.id.hasSuffix("HighHeartRateEvent") }!
+        s.addCategory(high.id, DetailedCategory(source: "Watch", start: noon, end: noon.addingTimeInterval(600), value: 0))
+        s.add(ECGDetail(source: "ECG", start: noon, end: noon.addingTimeInterval(30), classification: "Sinus Rhythm", samplingFrequency: 512, averageHeartRate: 61, numberOfVoltageMeasurements: 3))
+        s.moods = [StateOfMindRecord(id: "m", source: "Health", start: noon, end: noon, kind: "Daily Mood", valence: 0.5, valenceClassification: "pleasant", labels: ["calm"], associations: ["health"])]
+        s.doses = [MedicationDose(id: "d", name: "Vitamin", source: "Health", start: noon, end: noon, status: "Taken", quantity: 1, unit: "count")]
+
+        let start = T.date("2026-10-24 17:00:00 -0700")
+        let end = start.addingTimeInterval(1800)
+        s.add("active_energy", source: "Watch", at: start, end: end, 300)
+        s.add("basal_energy_burned", source: "Watch", at: start, end: end, 40)
+        s.add("walking_running_distance", source: "Watch", at: start, end: end, 2.5)
+        let run = WorkoutDetail(id: "11111111-1111-4111-8111-111111111111", activityType: "Running", activityTypeCode: 37, name: "Outdoor Run", source: "Watch", sourceIdentifier: "com.apple.health", start: start, end: end, duration: 1700, isIndoor: false,
+                                statistics: ["activeEnergy": .init(unit: "kcal", sum: 300), "basalEnergy": .init(unit: "kcal", sum: 40), "heartRate": .init(unit: "count/min", avg: 150, min: 90, max: 170),
+                                             "walkingAndRunningDistance": .init(unit: "km", sum: 2.5), "stepCount": .init(unit: "count", sum: 3000), "flightsClimbed": .init(unit: "count", sum: 2)],
+                                activities: [.init(id: "33333333-3333-4333-8333-333333333333", activityType: "Running", activityTypeCode: 37, isIndoor: false, start: start, end: end, duration: 1700, statistics: ["activeEnergy": .init(unit: "kcal", sum: 300), "walkingAndRunningDistance": .init(unit: "km", sum: 2.5), "heartRate": .init(unit: "count/min", avg: 150, min: 90, max: 170)])],
+                                events: [.init(type: "pause", typeCode: 1, start: start.addingTimeInterval(600), end: start.addingTimeInterval(600)),
+                                         .init(type: "resume", typeCode: 2, start: start.addingTimeInterval(700), end: start.addingTimeInterval(700)),
+                                         .init(type: "segment", typeCode: 7, start: start, end: start.addingTimeInterval(900))],
+                                metadata: ["key": "value"], temperature: 12, humidity: 80, elevationAscended: 30, averageSpeed: 1.5, maximumSpeed: 3, averageMETs: 8, estimatedEffort: 6, hasRoute: true)
+        s.add(run, route: [RoutePoint(timestamp: start, latitude: 49.28, longitude: -123.12, altitude: 10, course: 90, courseAccuracy: 1, horizontalAccuracy: 3, verticalAccuracy: 4, speed: 2.5, speedAccuracy: 0.5)])
+        s.add(WorkoutDetail(id: "22222222-2222-4222-8222-222222222222", activityType: "Yoga", name: "Yoga", source: "Watch", start: start.addingTimeInterval(7200), end: start.addingTimeInterval(9000), duration: 1800))
+        return s
+    }
+
+    static let week = DateInterval(start: T.day("2026-10-20").start(in: calendar), end: T.day("2026-10-27").start(in: calendar))
+    static let all = ExtractSpec(sections: Set(ExtractSpec.Section.allCases), range: .fixed(week), grouping: .days)
+    static let export = ExportInfo(device: FixtureTests.device, generatedAt: now, timeZone: vancouver)
+
+    /// Renders a built-in, returning each part's name and text.
+    static func render(_ id: String, spec: ExtractSpec = all) async throws -> [(name: String, text: String)] {
+        let e = Extractor(store: store(), spec: spec, calendar: calendar, ranges: [week])
+        var sinks: [String: MemorySink] = [:]
+        let run = try await TemplateTransformer(template: BuiltInTemplates.template(id)).run(extractor: e, export: export) { _, name in
+            let sink = MemorySink()
+            sinks[name] = sink
+            return sink
+        }
+        return run.parts.map { ($0.filename, sinks[$0.filename]!.string) }
+    }
+}
+
+@Suite struct BuiltInFormatTests {
+    private func json(_ text: String) throws -> JSON { try #require(JSON.parse(Data(text.utf8))) }
+
+    @Test func jsonHasEverySectionWithData() async throws {
+        let parts = try await RichData.render(BuiltInTemplates.metricsJSONv2)
+        let data = try json(parts[0].text)["data"]
+        for key in ["metrics", "workouts", "symptoms", "ecg", "heartRateNotifications", "stateOfMind", "cycleTracking", "medications"] {
+            #expect(data?[key] != nil, "\(key)")
+        }
+    }
+
+    @Test func aSectionWithNoDataIsLeftOutButMetricsAlwaysStays() async throws {
+        var spec = RichData.all
+        spec.sections = [.medications]
+        let store = FakeHealthQuerying(calendar: calendar)
+        let e = Extractor(store: store, spec: spec, calendar: calendar, ranges: [RichData.week])
+        let sink = MemorySink()
+        _ = try await TemplateTransformer(template: BuiltInTemplates.template(BuiltInTemplates.metricsJSONv2)).run(extractor: e, export: RichData.export) { _, _ in sink }
+        #expect(sink.string == #"{"data":{"metrics":[]}}"#)
+    }
+
+    @Test func aWorkoutHasItsWholeShape() async throws {
+        let parts = try await RichData.render(BuiltInTemplates.metricsJSONv2)
+        guard case .array(let workouts)? = try json(parts[0].text)["data"]?["workouts"], let w = workouts.first else {
+            Issue.record("no workouts")
+            return
+        }
+        for key in ["activeEnergy", "activeEnergyBurned", "activities", "avgHeartRate", "avgSpeed", "basalEnergy", "distance", "duration", "elevationUp", "end", "estimatedEffortScore", "events",
+                    "flightsClimbed", "heartRate", "heartRateData", "heartRateRecovery", "humidity", "id", "intensity", "isIndoor", "location", "maxHeartRate", "maxSpeed", "metadata", "name", "route",
+                    "segments", "source", "speed", "splits", "start", "stepCadence", "temperature", "totalEnergy", "walkingAndRunningDistance"] {
+            #expect(w[key] != nil, "\(key)")
+        }
+        #expect(w["totalEnergy"]?["qty"] == .number(340))
+        #expect(w["distance"]?["units"] == "km")
+        #expect(w["speed"]?["qty"] != nil)
+        #expect(w["heartRate"]?["max"]?["qty"] == .number(170))
+        #expect(w["location"] == "Outdoor")
+        #expect(w["source"]?["identifier"] == "com.apple.health")
+    }
+
+    @Test func aSimpleWorkoutLeavesOutWhatItDoesntHave() async throws {
+        let parts = try await RichData.render(BuiltInTemplates.metricsJSONv2)
+        guard case .array(let workouts)? = try json(parts[0].text)["data"]?["workouts"] else {
+            Issue.record("no workouts")
+            return
+        }
+        let yoga = workouts[1]
+        #expect(yoga["name"] == "Yoga")
+        for key in ["route", "distance", "splits", "segments", "isIndoor"] { #expect(yoga[key] == nil, "\(key)") }
+    }
+
+    @Test func unitsAreChosenInWorkoutsToo() async throws {
+        var spec = RichData.all
+        spec.units = UnitPreferences(byDimension: [.distance: "mi", .energy: "kJ", .speed: "mi/hr", .temperature: "degF"])
+        let parts = try await RichData.render(BuiltInTemplates.metricsJSONv2, spec: spec)
+        guard case .array(let workouts)? = try json(parts[0].text)["data"]?["workouts"], let w = workouts.first else { return }
+        #expect(w["distance"]?["units"] == "mi")
+        #expect(w["activeEnergyBurned"]?["units"] == "kJ")
+        #expect(w["activeEnergyBurned"]?["qty"] == .number(300 * 4.184))
+        #expect(w["temperature"]?["qty"] == .number(53.6))
+        #expect(w["avgSpeed"]?["units"] == "mi/hr")
+    }
+
+    @Test func aSeriesCanBeLeftOut() async throws {
+        var spec = RichData.all
+        spec.workouts.series = false
+        let parts = try await RichData.render(BuiltInTemplates.metricsJSONv2, spec: spec)
+        guard case .array(let workouts)? = try json(parts[0].text)["data"]?["workouts"], let w = workouts.first else { return }
+        #expect(w["heartRateData"] == nil)
+        #expect(w["activeEnergy"] == nil)
+    }
+
+    @Test func unsummarizedPointsHaveTheirLongForms() async throws {
+        var spec = RichData.all
+        spec.grouping = nil
+        spec.sections = [.metrics]
+        let parts = try await RichData.render(BuiltInTemplates.metricsJSONv2, spec: spec)
+        #expect(parts[0].text.contains("\"context\":\"Active\""))
+        #expect(parts[0].text.contains("\"heartbeatSeries\":["))
+        #expect(parts[0].text.contains("\"startDate\":"))
+        #expect(parts[0].text.contains("\"value\":\"REM\""))
+    }
+
+    @Test func aRunningTotalsSamplesStayShortInJSON() async throws {
+        var spec = RichData.all
+        spec.grouping = nil
+        spec.sections = [.metrics]
+        spec.metrics = .only(["step_count"])
+        let parts = try await RichData.render(BuiltInTemplates.metricsJSONv2, spec: spec)
+        #expect(parts[0].text.contains(#"{"date":"2026-10-24 12:00:00 -0700","qty":100,"source":"Watch"}"#))
+    }
+
+    @Test func aTemplateCanStillAskForACompactPointsBounds() async throws {
+        let store = RichData.store()
+        let spec = ExtractSpec(metrics: .only(["step_count"]), range: .fixed(RichData.week), grouping: nil)
+        let e = Extractor(store: store, spec: spec, calendar: calendar, ranges: [RichData.week])
+        let sink = MemorySink()
+        let t = try ParsedTemplate(source: "---\nname: n\n---\n{% for p in metrics.step_count.data limit:1 %}{{ p.end | date: '%H:%M' }}{% endfor %}")
+        _ = try await TemplateTransformer(template: t).run(extractor: e, export: RichData.export) { _, _ in sink }
+        #expect(sink.string == "12:01")
+    }
+
+    @Test func gpxMakesOneFilePerRoute() async throws {
+        let parts = try await RichData.render(BuiltInTemplates.workoutRoutesGPX)
+        #expect(parts.count == 1)
+        #expect(parts[0].name == "Outdoor Run-Route-2026-10-24_17-00-00.gpx")
+        let t = parts[0].text
+        #expect(t.contains(#"<trkpt lat="49.28" lon="-123.12">"#))
+        #expect(t.contains("<ele>10</ele>"))
+        #expect(t.contains("<speed>2.5</speed>"))
+        #expect(t.contains("<hAcc>3</hAcc>"))
+        #expect(t.contains("<time>2026-10-25T00:00:00.000Z</time>"))
+    }
+
+    @Test func markdownHasOneFilePerSection() async throws {
+        var spec = RichData.all
+        spec.sections = [.metrics, .workouts]
+        let parts = try await RichData.render(BuiltInTemplates.healthReportMarkdown, spec: spec)
+        #expect(parts.map(\.name) == ["HealthMetrics-2026-10-20-2026-10-27.md", "Workouts-2026-10-20-2026-10-27.md"])
+        let metrics = parts[0].text
+        #expect(metrics.hasPrefix("---\ntags:\n  - health-data-relay\n"))
+        #expect(metrics.contains("health_data_type: healthMetrics"))
+        #expect(metrics.contains("# Health Metrics"))
+        #expect(metrics.contains("## step_count"))
+        #expect(metrics.contains("### Summary"))
+        #expect(metrics.contains("| date | qty | source |"))
+        #expect(metrics.contains("| Avg | Max | Min | date |"))
+        #expect(metrics.contains("| asleep | awake | core | date |"))
+        #expect(metrics.contains("| 2026-10-24T07:00:00.000Z | 150 | Watch\\|iPhone |"))
+        let workouts = parts[1].text
+        #expect(workouts.contains("## Outdoor Run"))
+        #expect(workouts.contains("\n### Summary\n"))
+        #expect(workouts.contains("\n### Active Energy Burned\n\n#### Summary\n\n| Field | Value |\n|---|---|\n| qty | 300 |\n| units | kcal |"))
+        #expect(workouts.contains("\n#### Avg\n\n##### Summary\n"))
+        #expect(workouts.contains("\n### Route\n\n```csv\naltitude,course,courseAccuracy,horizontalAccuracy,latitude,longitude,speed,speedAccuracy,timestamp,verticalAccuracy\n10,90,1,3,49.28,-123.12,2.5,0.5,2026-10-25T00:00:00.000Z,4\n```"))
+        #expect(workouts.contains("\n#### 2026-10-25T00:00:00.000Z\n\n##### Summary\n"))
+        #expect(workouts.contains("\n###### Summary\n"))
+    }
+
+    @Test func splitsLandOnEachMark() {
+        let start = T.date("2026-10-24 12:00:00 -0700")
+        let samples = [DetailedQuantity(source: "Watch", start: start, end: start.addingTimeInterval(500), value: 2500)]
+        let marks = WorkoutSplits.marks(samples, every: 1000, workoutStart: start, workoutEnd: start.addingTimeInterval(500))
+        #expect(marks.count == 3)
+        #expect(marks[0].end == start.addingTimeInterval(200))
+        #expect(marks[1].end == start.addingTimeInterval(400))
+        #expect(!marks[0].isPartial)
+        #expect(marks[2].isPartial)
+        #expect(marks[2].end == start.addingTimeInterval(500))
+    }
+
+    @Test func dumpForTheStructureComparer() async throws {
+        // HDR_DUMP=<dir>: writes output in the layout tools/hae/compare.mjs reads.
+        guard let dir = ProcessInfo.processInfo.environment["HDR_DUMP"] else { return }
+        let manager = FileManager.default
+        func write(_ row: String, _ parts: [(name: String, text: String)]) throws {
+            let folder = URL(fileURLWithPath: dir).appendingPathComponent(row).appendingPathComponent("files")
+            try manager.createDirectory(at: folder, withIntermediateDirectories: true)
+            for p in parts { try p.text.write(to: folder.appendingPathComponent(p.name), atomically: true, encoding: .utf8) }
+        }
+        try write("summarized", try await RichData.render(BuiltInTemplates.metricsJSONv2))
+        var raw = RichData.all
+        raw.grouping = nil
+        try write("unsummarized", try await RichData.render(BuiltInTemplates.metricsJSONv2, spec: raw))
+        try write("gpx", try await RichData.render(BuiltInTemplates.workoutRoutesGPX))
+        var md = RichData.all
+        md.sections = [.metrics, .workouts]
+        try write("markdown", try await RichData.render(BuiltInTemplates.healthReportMarkdown, spec: md))
     }
 }

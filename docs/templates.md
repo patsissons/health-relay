@@ -29,6 +29,7 @@ date,steps,source
 | `partition` | Runs the template once per `none`, `day`, `week`, `month`, `year`, `metric`, `section` or `workout`, each producing one part. Defaults to `none`. |
 | `filename` | A template for each part's name. `/` becomes `-`, so a name can't leave its folder. |
 | `content_type` | Overrides the format's media type. |
+| `skip_empty` | `true` leaves out a part that read no rows, like a workout with no route. |
 
 An unknown key is an error, so a typo doesn't pass silently.
 
@@ -65,7 +66,9 @@ checked. Output that doesn't parse fails the run rather than sending bad data.
 | `state_of_mind` | `kind`, `valence`, `valenceClassification`, `labels`, `associations`, `source`, `start`, `end` |
 | `medications` | `name`, `nickname`, `status`, `quantity`, `scheduledQuantity`, `scheduledDate`, `unit`, `source`, `start`, `end` |
 
-A metric has `name`, `title`, `group`, `units` and `data`, its points. What's on
+A metric has `name`, `title`, `group`, `units` and `data`, its points. Writing `{{ m }}` in
+JSON leaves `start` and `end` off activity totals such as steps and energy, whose samples are many
+and short, though `p.start` and `p.end` still work. What's on
 a point depends on the metric and whether it's summarized:
 
 | Point | Fields |
@@ -79,9 +82,18 @@ a point depends on the metric and whether it's summarized:
 `source` lists several sources separated by `|`. Every point also has `units`.
 
 A workout has `id`, `name`, `activity_type`, `start`, `end`, `duration`,
-`isIndoor`, `location`, `source.name`, `source.identifier`, `metadata`,
-`has_route`, `route` and `statistics`, and any one statistic by name, such as
-`workout.activeEnergy.sum`. A route point has `timestamp`, `latitude`,
+`isIndoor`, `location`, `source.name`, `source.identifier`, `metadata` and
+`has_route`. These are `{qty, units}` when recorded: `activeEnergyBurned`,
+`totalEnergy`, `distance`, `speed`, `avgSpeed`, `maxSpeed`, `avgHeartRate`,
+`maxHeartRate`, `flightsClimbed`, `stepCadence`, `elevationUp`, `temperature`,
+`humidity`, `intensity` and `estimatedEffortScore`. `heartRate` has `avg`, `max` and `min`.
+
+Lists read from Health only if you use them: `route`, `heartRateData`, `heartRateRecovery`,
+`activeEnergy`, `basalEnergy`, `stepCount`, `walkingAndRunningDistance`, `cyclingDistance`,
+`segments` and `splits`. `activities` and `events` come with the workout.
+`statistics` holds every statistic HealthKit recorded, each with `sum`, `avg`, `min`, `max` and `units`.
+
+A route point has `timestamp`, `latitude`,
 `longitude`, `altitude`, `course`, `courseAccuracy`, `speed`, `speedAccuracy`,
 `horizontalAccuracy` and `verticalAccuracy`.
 
@@ -104,10 +116,14 @@ and work on lists you've made with a filter.
 **Filters:** `abs`, `append`, `at_least`, `at_most`, `capitalize`, `ceil`, `compact`,
 `concat`, `date`, `default`, `divided_by`, `downcase`, `escape`, `escape_once`, `first`,
 `floor`, `group_by`, `iso8601`, `join`, `json`, `last`, `lstrip`, `map`, `minus`,
-`modulo`, `newline_to_br`, `plus`, `prepend`, `raw`, `remove`, `remove_first`, `replace`,
+`markdown_tree`, `modulo`, `newline_to_br`, `plus`, `prepend`, `raw`, `remove`, `remove_first`, `replace`,
 `replace_first`, `reverse`, `round`, `rstrip`, `size`, `slice`, `sort`, `sort_natural`,
 `split`, `strip`, `strip_html`, `strip_newlines`, `sum`, `times`, `truncate`,
 `truncatewords`, `uniq`, `upcase`, `url_decode`, `url_encode`, `where`.
+
+**`markdown_tree`** writes an object as nested Markdown: its plain fields as a Summary
+table, each nested object under its own heading, rows of plain fields as fenced CSV. Give it
+the level to start at: `{{ workout | markdown_tree: 3 }}`.
 
 **`date`** takes strftime conversions: `%Y %y %m %d %e %j %H %I %M %S %L %p %P %z %:z
 %Z %A %a %B %b %h %u %w %s %F %T %D %%`.

@@ -152,6 +152,10 @@ final class TemplateRenderer {
 
     /// Like `write`, for values that may hold lazy lists: those stream.
     private func writeAsync(_ value: TemplateValue) async throws {
+        if case .object(let o) = value, let tree = o as? MarkdownTree {
+            try await writeTree(tree.value, level: tree.level)
+            return
+        }
         guard format == .json else {
             if case .lazy(let list) = value {
                 let rows = try await list.materialize(limit: limits.materializedRows)
@@ -199,6 +203,109 @@ final class TemplateRenderer {
         default:
             try write(value)
         }
+    }
+
+    // MARK: Markdown trees
+
+    /// Whether a value is a plain field of a table.
+    private func isFlat(_ v: TemplateValue) -> Bool {
+        switch v {
+        case .object, .array, .lazy: false
+        default: true
+        }
+    }
+
+    /// A field as Markdown shows it: dates in UTC, text safe for a table.
+    private func treeCell(_ v: TemplateValue, csv: Bool = false) -> String {
+        if case .date(let d) = v { return clock.isoUTC(d) }
+        let plain = text(v)
+        switch v {
+        case .number, .bool, .null: return plain
+        default: return (csv ? OutputFormat.csv : .markdown).escape(plain)
+        }
+    }
+
+    private func treeHeading(_ title: String, _ level: Int) throws {
+        try emit("\n" + String(repeating: "#", count: Swift.min(level, 6)) + " " + title + "\n")
+    }
+
+    /// "activeEnergyBurned" -> "Active Energy Burned".
+    private func treeTitle(_ key: String) -> String {
+        var out = ""
+        for c in key {
+            if c.isUppercase && !out.isEmpty { out += " " }
+            out.append(out.isEmpty ? Character(c.uppercased()) : c)
+        }
+        return out
+    }
+
+    /// An object as nested headings: its plain fields in a `Summary` table,
+    /// each nested object under its own heading, and each list in the shape
+    /// that reads best. Stops getting deeper at level 6, Markdown's last.
+    private func writeTree(_ value: TemplateValue, level: Int) async throws {
+        guard case .object(let o) = value else {
+            try emit(treeCell(value))
+            return
+        }
+        var flat: [(String, TemplateValue)] = []
+        var nested: [(String, TemplateValue)] = []
+        for key in o.keys {
+            guard let v = o.value(key) else { continue }
+            if isFlat(v) { flat.append((key, v)) } else { nested.append((key, v)) }
+        }
+        if !flat.isEmpty {
+            try treeHeading("Summary", level)
+            try emit("\n| Field | Value |\n|---|---|\n")
+            for (key, v) in flat { try emit("| \(key) | \(treeCell(v)) |\n") }
+        }
+        for (key, v) in nested {
+            try treeHeading(treeTitle(key), level)
+            switch v {
+            case .object: try await writeTree(v, level: level + 1)
+            default: try await writeTreeList(v, level: level + 1)
+            }
+        }
+    }
+
+    /// Rows of plain fields stream as fenced CSV; rows with anything nested
+    /// each get a heading, by their start time when they have one.
+    private func writeTreeList(_ value: TemplateValue, level: Int) async throws {
+        let reader: PageReader
+        switch value {
+        case .lazy(let list): reader = list.make()
+        case .array(let items):
+            var pending: [TemplateValue]? = items.isEmpty ? nil : items
+            reader = PageReader {
+                defer { pending = nil }
+                return pending
+            }
+        default: return
+        }
+        var number = 0
+        var columns: [String]?
+        var deep = false
+        while let page = try await reader.next() {
+            try checkTime()
+            for row in page {
+                try countRow()
+                number += 1
+                guard case .object(let o) = row else { continue }
+                if columns == nil {
+                    deep = o.keys.contains { key in o.value(key).map { !isFlat($0) } ?? false }
+                    columns = o.keys
+                    if !deep { try emit("\n```csv\n\(o.keys.joined(separator: ","))\n") }
+                }
+                if deep {
+                    var title = "Record \(number)"
+                    if let start = o.value("start"), case .date(let d) = start { title = clock.isoUTC(d) }
+                    try treeHeading(title, level)
+                    try await writeTree(row, level: level + 1)
+                } else {
+                    try emit((columns ?? []).map { key in o.value(key).map { treeCell($0, csv: true) } ?? "" }.joined(separator: ",") + "\n")
+                }
+            }
+        }
+        if columns != nil && !deep { try emit("```\n") }
     }
 
     /// Plain text of a value: what filters and non-JSON output see.
@@ -654,6 +761,15 @@ final class TemplateRenderer {
         if case .object(let o) = a, o is EmptyKeyword { return b.isEmptyish }
         return false
     }
+}
+
+/// What `markdown_tree` hands to the writer, which streams it.
+struct MarkdownTree: TemplateObject {
+    let value: TemplateValue
+    let level: Int
+
+    var keys: [String] { [] }
+    func value(_ key: String) -> TemplateValue? { nil }
 }
 
 /// The value of the `empty` and `blank` keywords.
