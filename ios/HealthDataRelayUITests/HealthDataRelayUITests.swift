@@ -753,6 +753,51 @@ final class HealthDataRelayUITests: XCTestCase {
         XCTAssertTrue(app.alerts["Not a setup link"].waitForExistence(timeout: 5))
     }
 
+    /// A copied setup link fills the editor too: a phone can't scan its own QR code.
+    func testCopiedSetupLink() throws {
+        tab("Pipelines")
+        app.buttons["add-pipeline"].tap()
+        // Copied from inside the app: the test runner can't write to the pasteboard from the background.
+        type("pipeline-name", "healthdatarelay://destination?name=Cubby&url=http%3A%2F%2F127.0.0.1%3A8787%2F&token=copied")
+        let name = app.textFields["pipeline-name"]
+        name.tap()
+        if !app.menuItems["Select All"].waitForExistence(timeout: 2) { name.tap() }
+        XCTAssertTrue(app.menuItems["Select All"].waitForExistence(timeout: 5))
+        app.menuItems["Select All"].tap()
+        XCTAssertTrue(app.menuItems["Copy"].waitForExistence(timeout: 5))
+        app.menuItems["Copy"].tap()
+        reveal(app.buttons["paste-link"])
+        app.buttons["paste-link"].tap()
+        XCTAssertTrue(text("From a setup link").waitForExistence(timeout: 10))
+        XCTAssertEqual(app.textFields["pipeline-url"].value as? String, "http://127.0.0.1:8787/")
+    }
+
+    /// The first grant trims a pipeline's days, and that must not crash, now
+    /// or on the next launch. Health remembers its answer through `-reset`, so
+    /// this needs an erased simulator.
+    func testAllowHealthAfterAddingAPipeline() throws {
+        let authorize = app.buttons["authorize"]
+        // A first launch after an erase is slow.
+        guard authorize.waitForExistence(timeout: 90) else { throw XCTSkip("Health was already answered: erase the simulator") }
+        open("healthdatarelay://destination?name=Cubby&url=http%3A%2F%2F127.0.0.1%3A8787%2F&token=first")
+        XCTAssertTrue(app.buttons["save-pipeline"].waitForExistence(timeout: 10))
+        app.buttons["save-pipeline"].tap()
+        if app.buttons["Not Now"].waitForExistence(timeout: 2) { app.buttons["Not Now"].tap() }
+        XCTAssertTrue(app.buttons["save-pipeline"].waitForNonExistence(timeout: 5))
+
+        authorize.tap()
+        allowHealth(history: "All Recorded Data and Future Data")
+        XCTAssertTrue(authorize.waitForNonExistence(timeout: 10))
+        XCTAssertEqual(app.state, .runningForeground)
+
+        app.terminate()
+        app.launchArguments = ["-hideSeed"]
+        app.launch()
+        tab("Pipelines")
+        XCTAssertTrue(app.staticTexts.matching(identifier: "Cubby").firstMatch.waitForExistence(timeout: 10))
+        XCTAssertEqual(app.state, .runningForeground)
+    }
+
     /// A static text containing `part`, ignoring case (section headers may be upper-cased).
     /// Scrolls a long form until an element is on screen.
     private func reveal(_ element: XCUIElement) {
@@ -777,7 +822,7 @@ final class HealthDataRelayUITests: XCTestCase {
         if open.waitForExistence(timeout: 5) { open.tap() }
     }
 
-    private func allowHealth() {
+    private func allowHealth(history choice: String = "Past 30 Days and Future Data") {
         let icon = app.images["healthauthorization_icon_large"]
         guard icon.waitForExistence(timeout: 10) else { return }
         // Medications have their own sheet, with nothing to choose on a simulator.
@@ -794,7 +839,7 @@ final class HealthDataRelayUITests: XCTestCase {
             app.staticTexts["Turn On All"].firstMatch.tap()
         }
         tapWhenReady(["Continue", "Allow"])
-        let history = app.staticTexts["Past 30 Days and Future Data"]
+        let history = app.staticTexts[choice]
         if history.waitForExistence(timeout: 5) {
             history.tap()
             snap("health-history")

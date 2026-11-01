@@ -21,6 +21,8 @@ holder.
       to Health, so Release carries a string saying so.
 - [x] Build 0.1 (4) uploaded, the first with the pipelines, widgets and the new
       domain's privacy link.
+- [x] Build 0.1 (5) uploaded, fixing the crash on allowing Health after adding a
+      pipeline.
 
 ## Code (M2 to M5)
 

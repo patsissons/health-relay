@@ -550,13 +550,14 @@ final class AppModel {
         let link: PipelineLink
     }
 
-    /// A link pasted into the app, including one copied from another export app.
-    func importLink(_ text: String) {
-        guard let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)), PipelineLink.matches(url) else {
+    /// A link pasted into the app: a setup link, or a pipeline link, including
+    /// one copied from another export app. Never a run link: pasting runs nothing.
+    func importLink(_ text: String) async {
+        guard let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)), PipelineLink.matches(url) || SetupLink(url) != nil else {
             linkProblem = PipelineLink.Failure.notALink.description
             return
         }
-        openPipelineLink(url)
+        await open(url)
     }
 
     private func openPipelineLink(_ url: URL) {
