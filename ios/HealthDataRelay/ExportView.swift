@@ -1,4 +1,5 @@
 import HealthDataRelayKit
+import MessageUI
 import SwiftUI
 
 /// A one-off export: pick a template and some dates, get a file to send on.
@@ -223,5 +224,69 @@ struct RunHistoryView: View {
             }
         }
         .navigationTitle("Run history")
+    }
+}
+
+/// Sends a run's output by hand: Apple Mail's composer when it's set up, and
+/// the share sheet for Gmail and everything else.
+struct ComposeRow: View {
+    let email: EmailTarget
+    let file: URL
+    @State private var composing = false
+    @State private var sent = false
+
+    var body: some View {
+        if MFMailComposeViewController.canSendMail() {
+            Button {
+                composing = true
+            } label: {
+                Label(sent ? "Sent" : "Compose in Mail", systemImage: "envelope")
+            }
+            .accessibilityIdentifier("compose-mail")
+            .sheet(isPresented: $composing) {
+                MailComposer(email: email, file: file) { sent = $0 }
+                    .ignoresSafeArea()
+            }
+        }
+        ShareLink(item: file, subject: Text(email.subject), message: Text(email.body)) {
+            Label("Send with another app", systemImage: "square.and.arrow.up")
+        }
+        .accessibilityIdentifier("compose-share")
+    }
+}
+
+private struct MailComposer: UIViewControllerRepresentable {
+    let email: EmailTarget
+    let file: URL
+    let finished: (Bool) -> Void
+
+    func makeUIViewController(context: Context) -> MFMailComposeViewController {
+        let vc = MFMailComposeViewController()
+        vc.mailComposeDelegate = context.coordinator
+        vc.setToRecipients(email.to)
+        // The subject is written when the run is; what's saved here is the template's, so it's plain only without one.
+        vc.setSubject(email.subject.contains("{{") ? "Health data" : email.subject)
+        vc.setMessageBody(email.body, isHTML: false)
+        if let data = try? Data(contentsOf: file) {
+            vc.addAttachmentData(data, mimeType: "application/octet-stream", fileName: file.lastPathComponent)
+        }
+        return vc
+    }
+
+    func updateUIViewController(_ vc: MFMailComposeViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(finished: finished) }
+
+    @MainActor final class Coordinator: NSObject, @preconcurrency MFMailComposeViewControllerDelegate {
+        let finished: (Bool) -> Void
+
+        init(finished: @escaping (Bool) -> Void) {
+            self.finished = finished
+        }
+
+        func mailComposeController(_ vc: MFMailComposeViewController, didFinishWith result: MFMailComposeResult, error: Error?) {
+            finished(result == .sent)
+            vc.dismiss(animated: true)
+        }
     }
 }

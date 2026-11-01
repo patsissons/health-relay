@@ -158,7 +158,7 @@ public actor Engine {
         case .web(let web): WebTransport(target: web, context: context)
         case .mqtt(let mqtt): MQTTTransport(target: mqtt, password: context.token)
         // The engine makes these itself: they need its file store or calendars.
-        case .share, .calendar: RefusingTransport()
+        case .share, .calendar, .email: RefusingTransport()
         }
     }
 
@@ -454,6 +454,7 @@ public actor Engine {
             let context = TransportContext(pipelineID: id, pipelineName: d.name, extract: definition.extract, token: env.tokens.token(for: id))
             // Nothing to reach out to: rendering it was the test.
             if case .share = target { return Delivery(status: nil, verdict: .accepted, message: "The template works") }
+            if case .email(let email) = target, case .compose = email.method { return Delivery(status: nil, verdict: .accepted, message: "The template works") }
             // An empty message on a real topic would reach whatever's listening,
             // and a calendar needs no test event: writing the shape was the test.
             if case .calendar = target {
@@ -470,12 +471,18 @@ public actor Engine {
         switch target {
         case .web(let web): web.url
         case .mqtt(let mqtt): mqtt.topic
+        case .email(let email): email.subject
         case .share, .calendar: nil
         }
     }
 
     private func transport(_ target: LoadTarget, _ context: TransportContext) -> ArtifactTransport {
         if case .share = target { return ShareTransport(files: env.files, context: context) }
+        if case .email(let email) = target {
+            // Composing takes a person: it's ready to share, and they're told.
+            if case .compose = email.method { return ShareTransport(files: env.files, context: context) }
+            return EmailTransport(target: email, files: env.files, context: context)
+        }
         if case .calendar(let calendar) = target, let store = env.calendars {
             return CalendarTransport(target: calendar, store: store, keysFile: env.files.pipelineFile(context.pipelineID, "calendar-keys.json"))
         }
@@ -811,6 +818,10 @@ public actor Engine {
         case .done:
             log(.pipeline, "\(d.name): finished")
             if notices.onSuccess { env.notify(PipelineNotice(pipeline: d.id, title: d.name, body: "Finished.")) }
+            // Nobody tapped Run, and an email to compose is waiting for someone.
+            if case .target(.email(let email)) = d.kind, case .compose = email.method, state.trigger(for: d.id) != .manual {
+                env.notify(PipelineNotice(pipeline: d.id, title: d.name, body: "Your email is ready. Tap to compose it."))
+            }
         case .failed:
             let why = lane?.attention ?? lane?.lastError ?? "It didn't finish."
             log(.pipeline, "\(d.name): failed: \(why)")

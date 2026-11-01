@@ -121,6 +121,20 @@ with a long-lived token, and a template writing one sensor per metric that has d
 Which event each key became is saved, so running again updates an event rather than adding one, and an event the
 user deleted is made again. Only events a pipeline made are touched.
 
+## Email
+
+A run sends one email, with its output attached: one file, or a ZIP of several. There's no server of ours.
+
+- **SMTP** runs unattended with the user's own account. STARTTLS is the default and refuses to carry on if a
+  server doesn't offer it, so a password or health data never falls back to the clear. Sending with no TLS is a
+  choice with a warning, for a server on the user's own network. The message streams from a file, so a large
+  attachment costs no memory.
+- **A mail service** (Resend, SendGrid or Postmark) runs unattended with the user's API key, up to 25 MB.
+- **Mail or another app** needs a tap. A run leaves the file ready, with Apple Mail's composer when it's set up and the
+  share sheet for Gmail and others. A run nobody tapped sends a notification saying it's ready.
+
+A retry keeps the same Message-ID, or idempotency key where a service has one, so a server can recognise a repeat.
+
 ## Notifications and activity
 
 A pipeline can notify when it fails, when it finishes, and, if scheduled, a few minutes after it's

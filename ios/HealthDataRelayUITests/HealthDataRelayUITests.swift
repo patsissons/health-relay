@@ -421,6 +421,39 @@ final class HealthDataRelayUITests: XCTestCase {
         snap("calendar-pipeline-ran")
     }
 
+    /// A compose pipeline leaves its file ready to send on.
+    func testComposeEmailPipeline() throws {
+        tab("Seed")
+        app.buttons["seed"].tap()
+        allowHealth()
+        XCTAssertTrue(app.staticTexts["seed-status"].waitForExistence(timeout: 60))
+
+        tab("Pipelines")
+        app.buttons["add-pipeline"].tap()
+        type("pipeline-name", "Email me")
+        app.buttons["transform"].tap()
+        app.buttons["Metrics CSV"].tap()
+        reveal(app.buttons["target-kind"])
+        app.buttons["target-kind"].tap()
+        app.buttons["Email"].tap()
+        reveal(app.textFields["email-to"])
+        type("email-to", "me@example.com")
+        snap("email-pipeline-new")
+        app.buttons["save-pipeline"].tap()
+        allowHealth()
+        XCTAssertTrue(app.buttons["save-pipeline"].waitForNonExistence(timeout: 10))
+
+        let card = app.staticTexts["Email me"].firstMatch
+        let runNow = app.buttons["run-now"]
+        for _ in 0..<3 where !runNow.exists {
+            card.tap()
+            _ = runNow.waitForExistence(timeout: 5)
+        }
+        runNow.tap()
+        XCTAssertTrue(app.buttons["compose-share"].waitForExistence(timeout: 90))
+        snap("email-pipeline-ready")
+    }
+
     /// Answers iOS's calendar permission alert, which runs in another process.
     private func allowCalendar() {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")

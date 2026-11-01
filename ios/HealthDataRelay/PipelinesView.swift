@@ -289,11 +289,15 @@ struct PipelineDetail: View {
                     if pipeline.trigger != .manual {
                         PipelineTimingRow(pipeline: pipeline)
                     }
-                    if case .target(.share) = pipeline.destination.kind, pipeline.activity == .idle, let file = model.latestExport(id) {
-                        ShareLink(item: file) {
-                            Label("Share \(file.lastPathComponent)", systemImage: "square.and.arrow.up")
+                    if pipeline.activity == .idle, let file = model.latestExport(id) {
+                        if case .target(.email(let email)) = pipeline.destination.kind, case .compose = email.method {
+                            ComposeRow(email: email, file: file)
+                        } else if case .target(.share) = pipeline.destination.kind {
+                            ShareLink(item: file) {
+                                Label("Share \(file.lastPathComponent)", systemImage: "square.and.arrow.up")
+                            }
+                            .accessibilityIdentifier("share-export")
                         }
-                        .accessibilityIdentifier("share-export")
                     }
                 }
 
@@ -436,9 +440,33 @@ struct PipelineEditor: View {
     @State private var calendarID: String?
     @State private var calendarName = "Default calendar"
     @State private var calendars: [(id: String, title: String)] = []
+    @State private var emailKind = EmailKind.compose
+    @State private var emailTo = ""
+    @State private var emailFrom = ""
+    @State private var emailSubject = "Health data for {{ export.start | date: '%B %e' }}"
+    @State private var emailBody = "Your Health Data Relay export is attached."
+    @State private var smtpHost = ""
+    @State private var smtpPort = 587
+    @State private var smtpSecurity = SMTPSettings.Security.startTLS
+    @State private var smtpUser = ""
+    @State private var mailAPI = MailAPI.resend
+
+    private var emailRecipients: [String] {
+        emailTo.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+
+    private var emailMethod: EmailTarget.Method {
+        switch emailKind {
+        case .compose: .compose
+        case .smtp: .smtp(SMTPSettings(host: smtpHost.trimmingCharacters(in: .whitespaces), port: smtpPort, security: smtpSecurity, username: smtpUser))
+        case .api: .api(mailAPI)
+        }
+    }
 
     /// Where a template pipeline sends: the kinds of `LoadTarget`.
-    private enum TargetKind: Hashable { case web, share, mqtt, calendar }
+    private enum TargetKind: Hashable { case web, share, mqtt, calendar, email }
+
+    private enum EmailKind: Hashable { case compose, smtp, api }
 
     private var choices: [TemplateLibrary.Entry] { model.library.entries() }
 
@@ -491,6 +519,12 @@ struct PipelineEditor: View {
         case .web: return targetURLIsValid
         case .share, .calendar: return true
         case .mqtt: return !mqttHost.trimmingCharacters(in: .whitespaces).isEmpty && !mqttTopic.isEmpty
+        case .email:
+            switch emailKind {
+            case .compose: return true
+            case .smtp: return !emailRecipients.isEmpty && !emailFrom.isEmpty && !smtpHost.trimmingCharacters(in: .whitespaces).isEmpty
+            case .api: return !emailRecipients.isEmpty && !emailFrom.isEmpty && !token.isEmpty
+            }
         }
     }
 
@@ -578,6 +612,7 @@ struct PipelineEditor: View {
                         Text("Share sheet").tag(TargetKind.share)
                         Text("MQTT").tag(TargetKind.mqtt)
                         Text("Calendar").tag(TargetKind.calendar)
+                        Text("Email").tag(TargetKind.email)
                     }
                     .accessibilityIdentifier("target-kind")
                 } header: {
@@ -620,6 +655,67 @@ struct PipelineEditor: View {
                     Toggle("Retain", isOn: $mqttRetain)
                 } footer: {
                     Text("Each part is one message. A topic can name its part, like health/{{ partition.key }}. The password is kept in the Keychain.")
+                }
+            }
+
+            if template != nil && targetKind == .email {
+                Section {
+                    Picker("Send with", selection: $emailKind) {
+                        Text("Mail or another app").tag(EmailKind.compose)
+                        Text("My mail server (SMTP)").tag(EmailKind.smtp)
+                        Text("A mail service").tag(EmailKind.api)
+                    }
+                    .accessibilityIdentifier("email-kind")
+                    TextField("To", text: $emailTo)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("email-to")
+                    TextField("Subject", text: $emailSubject)
+                        .accessibilityIdentifier("email-subject")
+                    TextField("Message", text: $emailBody, axis: .vertical)
+                    if emailKind != .compose {
+                        TextField("From", text: $emailFrom)
+                            .keyboardType(.emailAddress)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .accessibilityIdentifier("email-from")
+                    }
+                    if emailKind == .smtp {
+                        TextField("Server", text: $smtpHost)
+                            .keyboardType(.URL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .accessibilityIdentifier("smtp-host")
+                        Stepper("Port \(String(smtpPort))", value: $smtpPort, in: 1...65535)
+                        Picker("Security", selection: $smtpSecurity) {
+                            Text("STARTTLS").tag(SMTPSettings.Security.startTLS)
+                            Text("TLS").tag(SMTPSettings.Security.tls)
+                            Text("None").tag(SMTPSettings.Security.none)
+                        }
+                        .onChange(of: smtpSecurity) { _, next in
+                            if next == .tls && smtpPort == 587 { smtpPort = 465 }
+                            if next == .startTLS && smtpPort == 465 { smtpPort = 587 }
+                        }
+                        TextField("Username", text: $smtpUser)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        SecureField("Password", text: $token)
+                            .textContentType(.oneTimeCode)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    }
+                    if emailKind == .api {
+                        Picker("Service", selection: $mailAPI) {
+                            ForEach(MailAPI.allCases, id: \.self) { Text($0.title).tag($0) }
+                        }
+                        SecureField("API key", text: $token)
+                            .textContentType(.oneTimeCode)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    }
+                } footer: {
+                    Text(emailNote)
                 }
             }
 
@@ -776,6 +872,24 @@ struct PipelineEditor: View {
                     targetKind = .calendar
                     calendarID = calendar.calendarID
                     calendarName = calendar.calendarName
+                case .target(.email(let email)):
+                    targetKind = .email
+                    emailTo = email.to.joined(separator: ", ")
+                    emailFrom = email.from
+                    emailSubject = email.subject
+                    emailBody = email.body
+                    switch email.method {
+                    case .compose: emailKind = .compose
+                    case .smtp(let smtp):
+                        emailKind = .smtp
+                        smtpHost = smtp.host
+                        smtpPort = smtp.port
+                        smtpSecurity = smtp.security
+                        smtpUser = smtp.username
+                    case .api(let api):
+                        emailKind = .api
+                        mailAPI = api
+                    }
                 }
                 let pipeline = model.snapshot.pipelines.first { $0.id == existing.id }
                 if let definition = pipeline?.definition {
@@ -807,6 +921,18 @@ struct PipelineEditor: View {
         }
     }
 
+    private var emailNote: String {
+        switch emailKind {
+        case .compose:
+            return "Opens Apple Mail's composer with the file attached, or the share sheet for Gmail and others. It needs a tap to send, so a scheduled run notifies you when it's ready."
+        case .smtp:
+            if smtpSecurity == .none { return "Without TLS, your password and Health data cross the network unencrypted. Only use this on your own network." }
+            return "Sends unattended from your own account. Your password is kept in the Keychain. A service like Gmail needs an app password."
+        case .api:
+            return "Sends unattended with your own account at the service. Your key is kept in the Keychain. Attachments can be up to 25 MB."
+        }
+    }
+
     private var triggerNote: String {
         switch kind {
         case .manual:
@@ -835,6 +961,10 @@ struct PipelineEditor: View {
             case .calendar:
                 let title = calendars.first { $0.id == calendarID }?.title ?? calendarName
                 await model.save(existing: status?.destination, name: trimmed, target: .calendar(CalendarTarget(calendarID: calendarID, calendarName: title)), definition: definition, token: "", trigger: trigger)
+                return
+            case .email:
+                let email = EmailTarget(method: emailMethod, from: emailFrom, to: emailRecipients, subject: emailSubject, body: emailBody)
+                await model.save(existing: status?.destination, name: trimmed, target: .email(email), definition: definition, token: emailKind == .compose ? "" : token, trigger: trigger)
                 return
             case .web:
                 break
