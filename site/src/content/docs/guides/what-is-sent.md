@@ -7,9 +7,9 @@ sidebar:
 
 ## Your data goes only where you send it
 
-Health Data Relay has no server of ours, no account and no analytics. It reads Health
-on your phone and sends it to the destinations you added, and nothing anywhere
-else. If you turn on **Settings › Server**, tools on your own network that have its
+There is no central Health Data Relay server, no account and no analytics, so your
+health data never leaves your control. The app reads Health on your phone and sends
+it to the destinations you added, and nothing anywhere else. If you turn on **Settings › Server**, tools on your own network that have its
 token can ask for your data while the app is open. Tokens stay in the iPhone's Keychain. The queue of unsent batches
 lives in the app's own storage and is not backed up.
 

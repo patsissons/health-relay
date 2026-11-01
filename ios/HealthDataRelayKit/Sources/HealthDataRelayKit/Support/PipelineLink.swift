@@ -263,8 +263,13 @@ public struct WidgetSnapshot: Codable, Sendable, Equatable {
     }
 
     public func write(to url: URL? = sharedFile) {
-        guard let url, let data = try? JSONEncoder().encode(self) else { return }
+        guard var url, let data = try? JSONEncoder().encode(self) else { return }
         // Readable while locked, or a widget would go blank: it's only a summary a person chose to put on their Home Screen.
         try? data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        // It holds health values, so it stays out of backups like the app's own
+        // storage. An atomic write makes a new file, so this is set every time.
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? url.setResourceValues(values)
     }
 }

@@ -136,14 +136,15 @@ A retry keeps the same Message-ID, or idempotency key where a service has one, s
 
 ## Files and cloud storage
 
-A pipeline can save each part as a file: to a folder the user picked in the Files app, to Dropbox, or to Google Drive, replacing a file of the
-same name or keeping both. A folder's file appears whole or not at all. Cloud accounts are shared in Settings, signed in with OAuth and PKCE, so no
-secret ships in the app. Their tokens live in the Keychain, and an expired one refreshes on its own.
+A pipeline can save each part as a file in a folder the user picked in the Files app, replacing a file of the same name or keeping both. A folder's file
+appears whole or not at all.
 
-A large cloud upload goes in 8 MB chunks with its position saved, so an interrupted one carries on where it stopped: Dropbox from the saved offset, and Google by
-asking how much arrived. Google Drive can turn a CSV into a Sheet as it uploads, and its `drive.file` access only reaches files this app made.
+Dropbox and Google Drive are coming soon. They need OAuth clients built into the app, and a build without them offers neither and doesn't show Connected accounts.
+Accounts will be shared in Settings, signed in with OAuth and PKCE, so no secret ships in the app. Their tokens will live in the Keychain, and an expired one
+will refresh on its own.
 
-Dropbox and Google Drive need OAuth clients built into the app. A build without them offers neither, and doesn't show Connected accounts.
+A large cloud upload will go in 8 MB chunks with its position saved, so an interrupted one carries on where it stopped: Dropbox from the saved offset, and Google by
+asking how much arrived. Google Drive will be able to turn a CSV into a Sheet as it uploads, and its `drive.file` access only reaches files this app made.
 
 **iCloud Drive is off.** Guideline 5.1.3(ii) says apps "may not store personal health information in iCloud", so a folder there is refused until
 Apple has answered whether a file a user chose to put there themselves counts. `Features.iCloudDriveFolders` turns it on.

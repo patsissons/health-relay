@@ -3,7 +3,7 @@ title: Privacy policy
 description: What Health Data Relay reads, where it goes and how to stop it.
 ---
 
-**Health Data Relay has no server of ours and no account. Its developer never receives your health data.**
+**Your health data never leaves your control. There is no central Health Data Relay server, so nothing of ours processes, stores or receives your health data, and there's no account to create.**
 
 ## What the app reads
 
@@ -25,7 +25,7 @@ The app includes no analytics, advertising or tracking.
 - Output waiting to be sent, removed once delivered
 - A summary for the widgets: today's steps, energy, exercise, resting heart rate, sleep and weight, and how your pipelines stand
 
-Apart from that summary, none of this is included in iCloud or device backups, except for what iOS backs up in the Keychain.
+None of this is included in iCloud or device backups, except for what iOS backs up in the Keychain.
 
 ## Stopping and deleting
 

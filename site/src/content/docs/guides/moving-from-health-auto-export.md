@@ -36,7 +36,7 @@ If you have an automation link (`com.HealthExport://automation?...`), copy it. I
 
 **You can change the output.** Every format is a template you can copy and edit.
 
-**iCloud Drive isn't supported yet**, while Apple's rules on health data in iCloud are checked. Use a folder on your iPhone or another destination.
+**iCloud Drive isn't supported yet**, while Apple's rules on health data in iCloud are checked. Use a folder on your iPhone or another destination. Dropbox and Google Drive are coming soon.
 
 **It's free**, with no account.
 

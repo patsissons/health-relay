@@ -150,6 +150,19 @@ private func parse(_ text: String) throws -> PipelineLink { try PipelineLink.par
         #expect(WidgetSnapshot.read(from: file) == snapshot)
     }
 
+    /// It holds health values. Each write replaces the file, so each has to exclude it again.
+    @Test func aSnapshotStaysOutOfBackups() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let snapshot = WidgetSnapshot(updatedAt: now, pipelines: [], values: [.init(name: "step_count", title: "Steps", text: "8,204")])
+        for _ in 0..<2 {
+            snapshot.write(to: file)
+            var fresh = file
+            fresh.removeAllCachedResourceValues()
+            #expect(try fresh.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup == true)
+        }
+    }
+
     @Test func noFileIsNoSnapshot() {
         #expect(WidgetSnapshot.read(from: URL(fileURLWithPath: "/nonexistent")) == nil)
         #expect(WidgetSnapshot.read(from: nil) == nil)

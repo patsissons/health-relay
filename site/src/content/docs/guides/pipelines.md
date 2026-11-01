@@ -107,7 +107,7 @@ under How much, asks for the range each time you tap Run.
 
 ## Other destinations
 
-**Files** saves each part as a file in a folder you pick. iCloud Drive isn't supported yet, while Apple's rules on health data in iCloud are checked.
+**Files** saves each part as a file in a folder you pick. Dropbox and Google Drive are coming soon. iCloud Drive isn't supported yet, while Apple's rules on health data in iCloud are checked.
 
 A template pipeline's **Type** can be **REST API**, with a choice of method, headers and file upload, or **Share sheet**. It can also send to **Email**, from your own mail server or a service like Resend without you doing
 anything, or by composing in Mail, Gmail or another app with a tap, to **MQTT**, one message per part, or to **Calendar**, where each workout or other event
