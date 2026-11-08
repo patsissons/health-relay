@@ -375,6 +375,87 @@ extension Engine {
         #expect(recorder.all.last! == nil)
         #expect(await rig.engine.snapshot.progress == nil)
     }
+
+    @Test func overallKeepsRisingWhenAReadBatchIsSentInParts() async {
+        let rig = Rig()
+        await rig.addAll()
+        await rig.engine.sync(.manual)
+        // About 0.6 MB a day on three days: the five-day batch is read whole, then split.
+        for day in ["2026-10-21", "2026-10-22", "2026-10-23"] {
+            for i in 0..<4000 {
+                rig.store.add("HKQuantityTypeIdentifierEnvironmentalAudioExposure", source: "Watch",
+                              T.date("\(day) 00:00:00 -0700").addingTimeInterval(Double(i) * 20), 60)
+            }
+        }
+        rig.clock.advance(3600)
+        let recorder = Recorder()
+        await rig.engine.observe { recorder.add($0.progress) }
+        await rig.engine.sync(.manual)
+
+        let steps = recorder.all.compactMap { $0 }
+        let read = steps.compactMap { if case .reading(let days) = $0.step { days.count } else { nil } }.max() ?? 0
+        let sent = steps.compactMap { if case .sending(let days, _) = $0.step { days.count } else { nil } }
+        #expect(read == 5 && !sent.isEmpty && sent.allSatisfy { $0 < read })
+        #expect(zip(steps, steps.dropFirst()).allSatisfy { $0.overall <= $1.overall + 1e-9 })
+        #expect(steps.last?.overall == 1)
+    }
+}
+
+@Suite struct DeliveryPlanTests {
+    private let a = UUID(), b = UUID()
+
+    /// Overall after each change, so tests can check it never went back.
+    private func trace(_ plan: inout DeliveryPlan, _ changes: [(inout DeliveryPlan) -> Void]) -> [Double] {
+        changes.map { change in
+            change(&plan)
+            return plan.overall
+        }
+    }
+
+    @Test func aBatchReadWholeAndSentInPartsOnlyMovesForward() {
+        var plan = DeliveryPlan([(a, 7)])
+        plan.begin(a, name: "A")
+        let seen = trace(&plan, [
+            { $0.read(3.5) }, { $0.read(7) },         // the batch read whole
+            { $0.read(3) }, { $0.delivered(3) },      // first part
+            { $0.read(4) }, { $0.delivered(4) },      // second part
+        ])
+        #expect(zip(seen, seen.dropFirst()).allSatisfy { $0 <= $1 })
+        #expect(abs(seen.last! - 1) < 1e-9)
+    }
+
+    @Test func aPipelineThatStopsShortIsCountedWhenTheNextBegins() {
+        var plan = DeliveryPlan([(a, 10), (b, 10)])
+        plan.begin(a, name: "A")
+        plan.read(2)
+        plan.delivered(2)
+        let stopped = plan.overall
+        plan.begin(b, name: "B")
+        // Half the days: checking's share plus half the rest.
+        #expect(plan.overall > stopped)
+        #expect(abs(plan.overall - (SyncProgress.checkingShare + (1 - SyncProgress.checkingShare) / 2)) < 1e-9)
+        #expect(plan.destination == "B")
+    }
+
+    @Test func aTemplateFillsItsSlotAndNoMore() {
+        var plan = DeliveryPlan([(a, 0), (b, 3)])
+        plan.begin(a, name: "Template")
+        let start = plan.overall
+        plan.fillSlot(0.5)
+        let half = plan.overall
+        plan.fillSlot(2)
+        #expect(start < half && half < plan.overall)
+        // A slot of one day out of four.
+        #expect(abs(plan.overall - (SyncProgress.checkingShare + (1 - SyncProgress.checkingShare) / 4)) < 1e-9)
+    }
+
+    @Test func moreDaysThanPlannedStayInTheirSlot() {
+        var plan = DeliveryPlan([(a, 2), (b, 2)])
+        plan.begin(a, name: "A")
+        plan.read(5)
+        plan.delivered(5)
+        #expect(abs(plan.overall - (SyncProgress.checkingShare + (1 - SyncProgress.checkingShare) / 2)) < 1e-9)
+    }
 }
 
 @Suite struct ReadableWindowTests {

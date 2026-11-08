@@ -1276,25 +1276,34 @@ extension Verdict {
     }
 }
 
-/// What a running sync is doing, how far through that it is, and how far
-/// through the whole sync.
+/// How far through the whole sync, then what it is doing now and how far
+/// through that: two bars, so a step starting over doesn't look like the
+/// sync going backwards.
 struct SyncProgressRow: View {
     let progress: SyncProgress
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
+                Text("Overall")
+                Spacer()
+                Text(progress.overall, format: .percent.precision(.fractionLength(0)))
+                    .foregroundStyle(.secondary)
+            }
+            ProgressView(value: progress.overall)
+            HStack(alignment: .firstTextBaseline) {
                 Text(line)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer()
                 Text(progress.item, format: .percent.precision(.fractionLength(0)))
-                    .foregroundStyle(.secondary)
             }
-            ProgressView(value: progress.overall)
-            Text("\(progress.overall, format: .percent.precision(.fractionLength(0))) done")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.top, 4)
+            ProgressView(value: progress.item)
+                .tint(.secondary)
+                .scaleEffect(x: 1, y: 0.6, anchor: .center)
         }
         .font(.subheadline)
         .monospacedDigit()
