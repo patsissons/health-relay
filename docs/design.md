@@ -325,7 +325,12 @@ and the receiver's message.
 
 ## When to sync
 
-On the free tier, after the 7-day trial, nothing runs by itself: the engine
+The trial unlocks everything for 7 days from the first download on the Apple
+ID, which StoreKit's app transaction gives, so reinstalling doesn't restart it.
+TestFlight and the sandbox give a fixed 2013 date instead, so there it counts
+from the first launch on the device.
+
+On the free tier, after the trial, nothing runs by itself: the engine
 treats no pipeline as due or following Health, asks iOS for no background
 time and registers no change notifications, while every pipeline still runs
 when tapped. Triggers stay saved, so unlocking Full (a subscription or a

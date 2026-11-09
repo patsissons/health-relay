@@ -151,7 +151,7 @@ final class HealthDataRelayUITests: XCTestCase {
         app.terminate()
         app.launchArguments = ["-reset", "-hideSeed", "-access", "free"]
         app.launch()
-        XCTAssertTrue(app.buttons["offer-unlock"].waitForExistence(timeout: 30), "free offers the trial")
+        XCTAssertTrue(app.buttons["offer-unlock"].waitForExistence(timeout: 30), "free offers the plans")
         let add = app.buttons["add-pipeline"]
         XCTAssertTrue(add.waitForExistence(timeout: 10))
         add.tap()
@@ -182,38 +182,55 @@ final class HealthDataRelayUITests: XCTestCase {
         XCTAssertTrue(app.buttons["server-needs-full"].waitForExistence(timeout: 5))
     }
 
-    /// The $0 trial, bought through StoreKit testing, unlocks for 7 days.
-    func testStartingTheTrialUnlocks() throws {
-        let session = try SKTestSession(configurationFileNamed: "HealthDataRelay")
-        session.resetToDefaultState()
-        session.clearTransactions()
-        session.disableDialogs = true
+    /// A new install is on the trial from its first launch, with nothing to
+    /// tap: the notice says what it is, and a schedule counts down.
+    func testANewInstallIsOnTheTrial() throws {
+        try clearPurchases()
         app.terminate()
-        app.launchArguments = ["-reset", "-hideSeed"]
+        app.launchArguments = ["-reset", "-hideSeed", "-installedDaysAgo", "0"]
         app.launch()
+        XCTAssertTrue(text("Everything is free for 7 days").waitForExistence(timeout: 30))
+        snap("trial-notice")
+        app.buttons["dismiss-notice"].tap()
+        XCTAssertTrue(app.buttons["trial-status"].waitForExistence(timeout: 5))
+        XCTAssertTrue(text("Trial: 7 days left").exists)
+
+        let add = app.buttons["add-pipeline"]
+        add.tap()
+        type("pipeline-name", "Hourly")
+        type("pipeline-url", "http://127.0.0.1:8787/")
+        app.swipeUp()
+        app.buttons["Every"].tap()
+        XCTAssertFalse(app.buttons["unlock-done"].waitForExistence(timeout: 2), "the trial doesn't ask")
+        app.buttons["save-pipeline"].tap()
+        if app.buttons["Not Now"].waitForExistence(timeout: 2) { app.buttons["Not Now"].tap() }
+        XCTAssertTrue(app.staticTexts["next-run"].waitForExistence(timeout: 10))
+
         tab("Settings")
-        let status = app.descendants(matching: .any)["access-status"]
-        XCTAssertTrue(status.waitForExistence(timeout: 10))
-        if !text("Trial").exists {
-            app.buttons["settings-unlock"].tap()
-            let trial = app.buttons["start-trial"]
-            XCTAssertTrue(trial.waitForExistence(timeout: 10))
-            // Prices come from the StoreKit configuration.
-            let enabled = NSPredicate(format: "isEnabled == true")
-            expectation(for: enabled, evaluatedWith: trial)
-            waitForExpectations(timeout: 15)
-            trial.tap()
-            confirmPurchase()
-        }
-        XCTAssertTrue(text("Trial: 7 days left").waitForExistence(timeout: 15))
+        XCTAssertTrue(text("Trial: 7 days left").waitForExistence(timeout: 5))
+    }
+
+    /// Eight days after install the trial is over: the card says so, and
+    /// a schedule waits for a plan.
+    func testTheTrialEndsAfterSevenDays() throws {
+        try clearPurchases()
+        app.terminate()
+        app.launchArguments = ["-reset", "-hideSeed", "-installedDaysAgo", "8"]
+        app.launch()
+        XCTAssertTrue(text("Your trial has ended").waitForExistence(timeout: 30))
+        app.buttons["offer-unlock"].tap()
+        XCTAssertTrue(app.buttons["unlock-done"].waitForExistence(timeout: 5))
+        XCTAssertTrue(text("Free (trial ended)").exists)
+        XCTAssertFalse(app.buttons["start-trial"].exists)
+        app.buttons["unlock-done"].tap()
+        tab("Settings")
+        XCTAssertTrue(text("Free (trial ended)").waitForExistence(timeout: 5))
     }
 
     /// Lifetime, bought through StoreKit testing, is Full for good.
     func testBuyingLifetime() throws {
-        let session = try SKTestSession(configurationFileNamed: "HealthDataRelay")
-        session.resetToDefaultState()
-        session.clearTransactions()
-        session.disableDialogs = true
+        let session = try clearPurchases()
+        defer { _ = session }
         app.terminate()
         app.launchArguments = ["-reset", "-hideSeed"]
         app.launch()
@@ -232,6 +249,17 @@ final class HealthDataRelayUITests: XCTestCase {
         confirmPurchase()
         XCTAssertTrue(text("Lifetime").waitForExistence(timeout: 15))
         XCTAssertFalse(app.buttons["settings-unlock"].exists)
+    }
+
+    /// Forgets what StoreKit testing bought in earlier tests, which
+    /// otherwise outlives them on the simulator.
+    @discardableResult
+    private func clearPurchases() throws -> SKTestSession {
+        let session = try SKTestSession(configurationFileNamed: "HealthDataRelay")
+        session.resetToDefaultState()
+        session.clearTransactions()
+        session.disableDialogs = true
+        return session
     }
 
     /// StoreKit testing's purchase sheet, in the app or from the system.
