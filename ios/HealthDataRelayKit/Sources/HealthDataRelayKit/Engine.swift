@@ -72,6 +72,67 @@ public struct SyncProgress: Sendable, Equatable {
     static let readingShare = 0.9
 }
 
+/// How far a run is through delivering, counted in days so it only moves
+/// forward: a read batch the pusher then splits into smaller sends must not
+/// pull it back. Each pipeline has a slot of its dirty days, at least one so
+/// a template with a range of its own still counts. A day is worth
+/// `readingShare` once read and the rest once delivered.
+struct DeliveryPlan {
+    private var slots: [UUID: (start: Double, size: Double)] = [:]
+    private var total = 1.0
+    private var slot = (start: 0.0, size: 0.0)
+    private var readDays = 0.0
+    private var deliveredDays = 0.0
+    /// The pipeline being delivered.
+    private(set) var destination = ""
+
+    init() {}
+
+    init(_ pipelines: [(id: UUID, days: Int)]) {
+        var start = 0.0
+        for p in pipelines {
+            let size = Double(max(p.days, 1))
+            slots[p.id] = (start, size)
+            start += size
+        }
+        total = max(start, 1)
+    }
+
+    /// A pipeline starts: whatever the ones before it left undelivered
+    /// (a failure, days already covered) counts as passed.
+    mutating func begin(_ id: UUID, name: String) {
+        destination = name
+        guard let s = slots[id] else { return }
+        slot = s
+        readDays = max(readDays, s.start)
+        deliveredDays = max(deliveredDays, s.start)
+    }
+
+    private var slotEnd: Double { slot.start + slot.size }
+
+    /// `days` past those delivered have been read.
+    mutating func read(_ days: Double) {
+        readDays = max(readDays, min(deliveredDays + days, slotEnd))
+    }
+
+    mutating func delivered(_ days: Double) {
+        deliveredDays = min(deliveredDays + days, slotEnd)
+        readDays = max(readDays, deliveredDays)
+    }
+
+    /// The pipeline is `fraction` done, for one that isn't counted in days.
+    mutating func fillSlot(_ fraction: Double) {
+        let at = slot.start + slot.size * min(max(fraction, 0), 1)
+        readDays = max(readDays, at)
+        deliveredDays = max(deliveredDays, at)
+    }
+
+    var overall: Double {
+        let days = SyncProgress.readingShare * readDays + (1 - SyncProgress.readingShare) * deliveredDays
+        return SyncProgress.checkingShare + (1 - SyncProgress.checkingShare) * days / total
+    }
+}
+
 public struct SyncReport: Sendable, Equatable {
     public var trigger: Trigger
     public var startedAt: Date
@@ -186,8 +247,8 @@ public actor Engine {
     private var progress: SyncProgress?
     private var published: SyncProgress?
     private var publishedAt = ContinuousClock.now
-    /// While delivering: days to deliver, days delivered, and the batch in hand.
-    private var plan = (total: 0, done: 0, batch: 0, destination: "")
+    /// While delivering: how far through the run's days.
+    private var plan = DeliveryPlan()
     /// Ranges picked for asked pipelines about to run.
     private var answers: [UUID: DateInterval] = [:]
 
@@ -262,6 +323,8 @@ public actor Engine {
     /// Progress goes to observers without saving state: a new step or a
     /// finished one at once, otherwise at most ten times a second.
     private func show(_ step: SyncProgress.Step, item: Double, overall: Double) {
+        // The whole run only ever moves forward.
+        let overall = max(overall, progress?.overall ?? 0)
         let p = SyncProgress(step: step, item: min(max(item, 0), 1), overall: min(max(overall, 0), 1))
         progress = p
         let now = ContinuousClock.now
@@ -274,27 +337,20 @@ public actor Engine {
         for o in observers { o(s) }
     }
 
-    /// Delivery progress: the batch in hand counts for `item` of its days.
-    private func show(_ step: SyncProgress.Step, item: Double) {
-        let total = max(plan.total, 1)
-        let days = min(Double(plan.done) + item * Double(plan.batch), Double(total))
-        show(step, item: item, overall: SyncProgress.checkingShare + (1 - SyncProgress.checkingShare) * days / Double(total))
-    }
-
     private func reading(_ days: [Day], _ fraction: Double) {
-        plan.batch = days.count
-        show(.reading(days), item: fraction * SyncProgress.readingShare)
+        plan.read(Double(days.count) * fraction)
+        show(.reading(days), item: fraction * SyncProgress.readingShare, overall: plan.overall)
     }
 
     private func delivering(_ step: Pusher.Step) {
         switch step {
         case .sending(let days):
-            plan.batch = days.count
-            show(.sending(days, to: plan.destination), item: SyncProgress.readingShare)
+            // Days another pipeline already read come from the cache unread.
+            plan.read(Double(days.count))
+            show(.sending(days, to: plan.destination), item: SyncProgress.readingShare, overall: plan.overall)
         case .accepted(let days):
-            show(.sending(days, to: plan.destination), item: 1)
-            plan.done += days.count
-            plan.batch = 0
+            plan.delivered(Double(days.count))
+            show(.sending(days, to: plan.destination), item: 1, overall: plan.overall)
         }
     }
 
@@ -777,7 +833,7 @@ public actor Engine {
             guard !d.paused, inRun(d.id), let lane = state.lanes[d.id], lane.attention == nil else { return false }
             return forced || (lane.retryAfter.map { $0 <= env.now() } ?? true)
         }
-        plan = (sending.reduce(0) { $0 + (state.lanes[$1.id]?.dirty.days.count ?? 0) }, 0, 0, "")
+        plan = DeliveryPlan(sending.map { ($0.id, state.lanes[$0.id]?.dirty.days.count ?? 0) })
         let reader = DayReader(store: env.store, calendar: calendar)
         var cache: [Day: Content] = [:]
         let deviceName = state.deviceName
@@ -801,8 +857,8 @@ public actor Engine {
                 report.failed += 1
                 continue
             }
-            plan.destination = d.name
             let id = d.id
+            plan.begin(id, name: d.name)
             let access = Pusher.LaneAccess(read: { await self.lane(id) },
                                            update: { body in await self.updateLane(id, body) },
                                            shouldStop: { await self.limitReached })
@@ -922,13 +978,15 @@ public actor Engine {
         env.files.save(state)
     }
 
+    /// A template's steps fill its pipeline's share of the run.
     private func templateStep(_ step: ArtifactRunner.Step, name: String) {
-        let overall = progress?.overall ?? SyncProgress.checkingShare
         switch step {
         case .rendering:
-            show(.rendering(name), item: 0, overall: overall)
+            show(.rendering(name), item: 0, overall: plan.overall)
         case .sending(let part, let total):
-            show(.sendingPart(part, of: total, to: name), item: Double(part - 1) / Double(max(total, 1)), overall: overall)
+            let item = Double(part - 1) / Double(max(total, 1))
+            plan.fillSlot(item)
+            show(.sendingPart(part, of: total, to: name), item: item, overall: plan.overall)
         }
     }
 

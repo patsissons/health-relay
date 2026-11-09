@@ -23,6 +23,9 @@ holder.
       domain's privacy link.
 - [x] Build 0.1 (5) uploaded, fixing the crash on allowing Health after adding a
       pipeline.
+- [x] Build 0.1 (6) uploaded, keeping the phone awake during a run.
+- [x] Build 0.1 (7) uploaded, showing overall and step progress as two bars
+      that no longer jump back.
 
 ## Code (M2 to M5)
 
