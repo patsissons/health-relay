@@ -68,6 +68,9 @@ struct HealthDataRelayApp: App {
                 NavigationStack { PipelineEditor(existing: nil, link: draft.link) }
                     .environment(model)
             }
+            .sheet(isPresented: Binding(get: { model.showUnlock }, set: { model.showUnlock = $0 })) {
+                UnlockView().environment(model)
+            }
             .alert("Couldn't use that link", isPresented: Binding(get: { model.linkProblem != nil }, set: { if !$0 { model.linkProblem = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: {

@@ -43,6 +43,7 @@ struct PipelinesView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    AccessNotice()
                     if snapshot.pipelines.isEmpty {
                         ContentUnavailableView {
                             Label("No pipelines", systemImage: "arrow.triangle.branch")
@@ -210,7 +211,8 @@ struct PipelineTimingRow: View {
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("pipeline-activity")
         case .idle:
-            if pipeline.trigger == .manual {
+            // The free tier runs every pipeline when tapped, whatever its trigger.
+            if pipeline.trigger == .manual || !pipeline.automatic {
                 Button {
                     if pipeline.extract.range == .askAtRun {
                         asking = true
@@ -228,6 +230,15 @@ struct PipelineTimingRow: View {
                     RangePrompt(name: pipeline.name) { answer in
                         Task { await model.run(pipeline.id, answer: answer) }
                     }
+                }
+                if pipeline.trigger != .manual {
+                    Button {
+                        model.showUnlock = true
+                    } label: {
+                        Label("Runs by itself with Full access", systemImage: "lock.fill")
+                            .font(.subheadline)
+                    }
+                    .accessibilityIdentifier("needs-full-\(pipeline.name)")
                 }
             } else {
                 // A view of its own redrawing each second: nothing runs when
@@ -252,6 +263,7 @@ struct PipelineTimingRow: View {
         // iOS decides when background work runs; the card never claims more.
         case .due(.waitingForIOS): return "Due, waiting for iOS"
         case .due(.unlockIPhone): return "Due, unlock your iPhone"
+        case .needsFullAccess: return "Runs by itself with Full access"
         }
     }
 }
@@ -452,6 +464,7 @@ struct PipelineEditor: View {
     @State private var token = ""
     @State private var headers: [HTTPEndpoint.Header] = []
     @State private var kind = TriggerKind.manual
+    @State private var unlocking = false
     @State private var count = 1
     @State private var unit = Schedule.Unit.hours
     @State private var saved: PipelineTrigger?
@@ -940,6 +953,19 @@ struct PipelineEditor: View {
                 }
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("trigger-kind")
+                .onChange(of: kind) { _, now in
+                    // Saved either way; it runs by itself once Full is unlocked.
+                    if now != .manual, model.store.access.isFree { unlocking = true }
+                }
+                if kind != .manual, model.store.access.isFree {
+                    Button {
+                        unlocking = true
+                    } label: {
+                        Label("Runs by itself with Full access. Until then, tap Run.", systemImage: "lock.fill")
+                            .font(.subheadline)
+                    }
+                    .accessibilityIdentifier("trigger-needs-full")
+                }
                 if kind == .schedule {
                     Stepper("Every \(count)", value: $count, in: 1...999)
                         .accessibilityIdentifier("schedule-count")
@@ -974,6 +1000,7 @@ struct PipelineEditor: View {
         }
         .navigationTitle(existing == nil ? "New pipeline" : name)
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $unlocking) { UnlockView() }
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }

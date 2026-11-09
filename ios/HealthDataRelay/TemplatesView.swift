@@ -8,6 +8,12 @@ struct TemplatesView: View {
     @State private var importing = false
     @State private var importError: String?
     @State private var newEditor: NewTemplate?
+    @State private var unlocking = false
+
+    /// Writing your own templates is part of Full; the built-ins stay free.
+    private func ifUnlocked(_ action: () -> Void) {
+        if model.store.access.allowsCustomTemplates { action() } else { unlocking = true }
+    }
 
     struct NewTemplate: Identifiable, Hashable {
         let id = UUID()
@@ -31,7 +37,7 @@ struct TemplatesView: View {
                 Section("Built in") {
                     ForEach(model.library.entries().filter { if case .builtIn = $0.ref { true } else { false } }) { entry in
                         NavigationLink {
-                            BuiltInTemplateView(entry: entry) { newEditor = NewTemplate(source: $0) }
+                            BuiltInTemplateView(entry: entry) { source in ifUnlocked { newEditor = NewTemplate(source: source) } }
                         } label: {
                             TemplateRow(entry: entry)
                         }
@@ -53,13 +59,13 @@ struct TemplatesView: View {
                         for i in offsets { model.removeTemplate(model.customTemplates[i].id) }
                     }
                     Button {
-                        newEditor = NewTemplate(source: Self.starter)
+                        ifUnlocked { newEditor = NewTemplate(source: Self.starter) }
                     } label: {
                         Label("New template", systemImage: "plus")
                     }
                     .accessibilityIdentifier("new-template")
                     Button {
-                        importing = true
+                        ifUnlocked { importing = true }
                     } label: {
                         Label("Import a file", systemImage: "square.and.arrow.down")
                     }
@@ -76,6 +82,7 @@ struct TemplatesView: View {
             }
             .navigationTitle("Templates")
             .onAppear { model.reloadTemplates() }
+            .sheet(isPresented: $unlocking) { UnlockView() }
             .navigationDestination(item: $newEditor) { new in
                 TemplateEditor(id: nil, source: new.source)
             }

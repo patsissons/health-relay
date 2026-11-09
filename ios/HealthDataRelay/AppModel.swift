@@ -20,6 +20,10 @@ final class AppModel {
 
     let engine: Engine
     let health: LiveHealthStore
+    /// What the user bought; free keeps everything manual.
+    let store = Store()
+    /// Set to show the unlock sheet from anywhere.
+    var showUnlock = false
     private(set) var snapshot = Snapshot() { didSet { keepAwake() } }
     /// Whether a one-off export is being written.
     private var exporting = false { didSet { keepAwake() } }
@@ -84,8 +88,13 @@ final class AppModel {
                 Task { @MainActor in self?.snapshot = snapshot }
             }
         }
-        // Nothing to observe also clears background delivery an earlier launch turned on.
-        if plan.observesHealth { observeHealth() } else if LiveHealthStore.isAvailable { health.stopObserving() }
+        // Nothing to observe also clears background delivery an earlier launch
+        // turned on. The free tier observes nothing: its pipelines run when tapped.
+        let automatic = store.access.allowsAutomation
+        if plan.observesHealth && automatic { observeHealth() } else if LiveHealthStore.isAvailable { health.stopObserving() }
+        Task { await engine.setAutomation(automatic) }
+        store.onChange = { [weak self] _ in Task { await self?.accessChanged() } }
+        store.start()
         Task { await refreshAuthorization() }
         customTemplates = library.custom()
     }
@@ -241,9 +250,12 @@ final class AppModel {
     func becameActive() async {
         // Woken before the first unlock, the app could not read its settings.
         await engine.reloadIfUnreadable()
+        store.recheckClock()
+        await store.refresh()
+        await engine.setAutomation(store.access.allowsAutomation)
         await refreshAuthorization()
         watchSchedules()
-        await server.start()
+        if store.access.allowsServer { await server.start() } else { server.stop() }
         await engine.syncIfStale()
         await applyBackgroundPlan()
         await updateWidgets()
@@ -272,12 +284,16 @@ final class AppModel {
 
     /// Background refresh, run by the system.
     func refresh() async {
+        store.recheckClock()
+        await engine.setAutomation(store.access.allowsAutomation)
         await engine.sync(.refresh)
         await applyBackgroundPlan()
     }
 
     /// iOS's longer background time, for output a refresh can't finish.
     func process() async {
+        store.recheckClock()
+        await engine.setAutomation(store.access.allowsAutomation)
         await engine.sync(.processing)
         await applyBackgroundPlan()
     }
@@ -297,6 +313,7 @@ final class AppModel {
 
     /// Runs a pipeline for a Shortcut and says how it went.
     func runForShortcut(_ id: UUID) async -> String {
+        guard store.access.allowsAutomation else { return "Running from Shortcuts needs Health Data Relay Full. Open the app to unlock it." }
         let report = await engine.run(id)
         await applyBackgroundPlan()
         let lane = await engine.snapshot.pipelines.first { $0.id == id }?.lane
@@ -338,7 +355,7 @@ final class AppModel {
         let rows = await engine.snapshot.pipelines.map { p -> WidgetSnapshot.PipelineRow in
             var next: Date?
             if case .next(let date) = p.timing(now: .now) { next = date }
-            let manual = p.trigger == .manual && p.extract.range != .askAtRun
+            let manual = p.trigger == .manual && p.extract.range != .askAtRun && store.access.allowsAutomation
             return .init(id: p.id, name: p.name, state: p.lane.attention != nil ? "Needs attention" : (p.lane.lastSuccess == nil ? "Hasn't run yet" : "Last run finished"),
                          needsAttention: p.lane.attention != nil, nextRun: next, lastSuccess: p.lane.lastSuccess,
                          runLink: manual ? RunLink(pipeline: p.id, key: key).url : nil)
@@ -442,6 +459,36 @@ final class AppModel {
             let request = UNNotificationRequest(identifier: "reminder-\(reminder.id.uuidString)", content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: wait, repeats: false))
             try? await center.add(request)
         }
+    }
+
+    // MARK: Access
+
+    /// A purchase, a restore or the trial's end: what runs by itself follows.
+    func accessChanged() async {
+        let access = store.access
+        await engine.setAutomation(access.allowsAutomation)
+        if access.allowsServer {
+            if UIApplication.shared.applicationState == .active { await server.start() }
+        } else {
+            server.stop()
+        }
+        await applyBackgroundPlan()
+        await updateWidgets()
+        await scheduleTrialReminder()
+    }
+
+    /// One notice a day before the trial ends, if notifications are allowed.
+    /// It never asks for permission itself.
+    private func scheduleTrialReminder() async {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: ["trial-ending"])
+        guard case .trial(let end) = store.access else { return }
+        let wait = end.addingTimeInterval(-86400).timeIntervalSinceNow
+        guard wait > 60 else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Your trial ends tomorrow"
+        content.body = "After that, pipelines run when you tap Run. Unlock Health Data Relay Full to keep them running by themselves."
+        try? await center.add(UNNotificationRequest(identifier: "trial-ending", content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: wait, repeats: false)))
     }
 
     // MARK: Activity
@@ -584,6 +631,7 @@ final class AppModel {
             return
         }
         if let link = RunLink(url) {
+            guard store.access.allowsAutomation else { showUnlock = true; return }
             if link.key == runKey { await run(link.pipeline) }
             return
         }

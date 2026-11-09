@@ -1,5 +1,6 @@
 import HealthDataRelayKit
 import SwiftUI
+import StoreKit
 
 /// What belongs to the whole app: Health access, this phone's name, and
 /// which types have data.
@@ -7,6 +8,8 @@ struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @State private var deviceName = ""
     @FocusState private var editingName: Bool
+    @State private var unlocking = false
+    @State private var managing = false
 
     private var snapshot: Snapshot { model.snapshot }
 
@@ -21,6 +24,27 @@ struct SettingsView: View {
                             Label("Allow Health access", systemImage: "heart.circle.fill")
                         }
                     }
+                }
+
+                Section {
+                    LabeledContent("Plan", value: model.store.statusText())
+                        .accessibilityIdentifier("access-status")
+                    if case .full(let plan) = model.store.access, plan != .lifetime {
+                        Button("Manage subscription") { managing = true }
+                    } else if case .full = model.store.access {
+                    } else {
+                        Button("Unlock everything") { unlocking = true }
+                            .accessibilityIdentifier("settings-unlock")
+                    }
+                    Button("Restore purchases") { Task { await model.store.restore() } }
+                        .disabled(model.store.busy)
+                    if let message = model.store.message, !unlocking {
+                        Text(message).font(.caption).foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Health Data Relay Full")
+                } footer: {
+                    Text("Free runs pipelines when you tap Run. Full also runs them by themselves, from Shortcuts and widgets, serves AI tools and the Mac, and lets you write templates.")
                 }
 
                 Section {
@@ -67,6 +91,9 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .sheet(isPresented: $unlocking) { UnlockView() }
+            .manageSubscriptionsSheet(isPresented: $managing)
+
             .dismissingKeyboardOnScroll()
             // The saved name, once loaded and after each save, unless being edited.
             .onChange(of: snapshot.deviceName, initial: true) { _, name in

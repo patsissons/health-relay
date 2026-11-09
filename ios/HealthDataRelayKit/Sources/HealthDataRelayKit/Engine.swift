@@ -35,6 +35,8 @@ public struct Snapshot: Sendable, Equatable {
     /// old file is kept until the user dismisses this.
     public var stateSetAside = false
     public var backgroundPlan = BackgroundPlan()
+    /// Off: pipelines run only when tapped (see `Access`).
+    public var automation = true
 
     public init() {}
 }
@@ -251,6 +253,9 @@ public actor Engine {
     private var plan = DeliveryPlan()
     /// Ranges picked for asked pipelines about to run.
     private var answers: [UUID: DateInterval] = [:]
+    /// Off on the free tier: nothing runs by itself, but triggers stay saved,
+    /// so paying resumes them as they were. Not saved; the app sets it.
+    private var automation = true
 
     public init(_ env: Environment) {
         self.env = env
@@ -273,10 +278,14 @@ public actor Engine {
         s.deviceName = state.deviceName
         s.autoSync = state.autoSync ?? false
         s.stateSetAside = stateSetAside
-        s.backgroundPlan = state.backgroundPlan
+        s.backgroundPlan = automation ? state.backgroundPlan : BackgroundPlan()
+        s.automation = automation
+        let automation = automation
         s.pipelines = s.destinations.map {
-            Pipeline(destination: $0.destination, lane: $0.lane, hasToken: $0.hasToken,
-                     trigger: state.trigger(for: $0.id), activity: activity($0.id), definition: state.definitions?[$0.id])
+            var p = Pipeline(destination: $0.destination, lane: $0.lane, hasToken: $0.hasToken,
+                             trigger: state.trigger(for: $0.id), activity: activity($0.id), definition: state.definitions?[$0.id])
+            p.automatic = automation
+            return p
         }
         return s
     }
@@ -362,6 +371,14 @@ public actor Engine {
         changed()
     }
 
+    /// Whether pipelines may run by themselves. Turning it on runs nothing
+    /// at once; the next wake, refresh or foreground does.
+    public func setAutomation(_ allowed: Bool) {
+        guard automation != allowed else { return }
+        automation = allowed
+        changed()
+    }
+
     public func setTrigger(_ id: UUID, _ trigger: PipelineTrigger) {
         guard state.lanes[id] != nil else { return }
         state.triggers = (state.triggers ?? [:]).merging([id: trigger]) { _, new in new }
@@ -378,6 +395,7 @@ public actor Engine {
 
     /// Pipelines to remind about, and when: scheduled, with reminders on.
     public var reminders: [(id: UUID, name: String, at: Date)] {
+        guard automation else { return [] }
         let calendar = env.calendar()
         return state.destinations.compactMap { d in
             guard !d.paused, state.notices?[d.id]?.reminder == true,
@@ -640,7 +658,7 @@ public actor Engine {
     }
 
     /// The soonest a scheduled pipeline comes due, while the app is open.
-    public var nextRun: Date? { state.backgroundPlan.nextRun }
+    public var nextRun: Date? { automation ? state.backgroundPlan.nextRun : nil }
 
     /// The sync. A call while one runs waits for it and returns its report.
     /// A manual sync covers every pipeline; any other only those whose
@@ -671,13 +689,15 @@ public actor Engine {
     }
 
     private func followingHealthIDs() -> Set<UUID> {
-        Set(state.destinations.map(\.id).filter { state.trigger(for: $0) == .whenHealthChanges })
+        guard automation else { return [] }
+        return Set(state.destinations.map(\.id).filter { state.trigger(for: $0) == .whenHealthChanges })
     }
 
     /// Scheduled pipelines past their time, or with a failed delivery whose
     /// backoff is over. Paused ones, ones that need attention and ones still
     /// backing off cannot send, so they are not due.
     private func dueIDs() -> Set<UUID> {
+        guard automation else { return [] }
         let now = env.now()
         let calendar = env.calendar()
         return Set(state.destinations.filter { d in

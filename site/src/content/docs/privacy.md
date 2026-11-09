@@ -17,6 +17,8 @@ If you turn on the server in Settings, tools on your own network that have its t
 
 The app includes no analytics, advertising or tracking.
 
+Purchases and the free trial go through Apple's App Store. The app never sees your payment details, and nothing about what you bought is sent anywhere by the app.
+
 ## What's kept on your iPhone
 
 - Your pipelines and their settings
