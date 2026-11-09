@@ -18,7 +18,7 @@ settings:
     # The screens' strings go in HealthDataRelay/Localizable.xcstrings as Xcode builds. English is all that's translated so far.
     SWIFT_EMIT_LOC_STRINGS: YES
     LOCALIZATION_PREFERS_STRING_CATALOGS: YES
-    CURRENT_PROJECT_VERSION: "9"
+    CURRENT_PROJECT_VERSION: "10"
 packages:
   HealthDataRelayKit:
     path: HealthDataRelayKit

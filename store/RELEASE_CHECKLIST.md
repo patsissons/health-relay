@@ -29,7 +29,7 @@ holder.
 - [x] Build 1.0 (8) uploaded, the first 1.0 build, for App Review.
 - [x] Build 1.0 (9) uploaded, with the 7-day trial and Full (monthly, yearly
       or lifetime).
-- [ ] Build 1.0 (10) uploaded, starting the trial at the first download
+- [x] Build 1.0 (10) uploaded, starting the trial at the first download
       instead of a $0 trial purchase. This is the build for App Review.
 
 ## Code (M2 to M5)
