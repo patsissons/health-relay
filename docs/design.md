@@ -325,6 +325,13 @@ and the receiver's message.
 
 ## When to sync
 
+On the free tier, after the 7-day trial, nothing runs by itself: the engine
+treats no pipeline as due or following Health, asks iOS for no background
+time and registers no change notifications, while every pipeline still runs
+when tapped. Triggers stay saved, so unlocking Full (a subscription or a
+one-time purchase) resumes them as they were. The app also gates Shortcuts
+and widget runs, the server and writing templates.
+
 One run at a time: a trigger that arrives during a run waits for it rather
 than starting a second, and a tapped Run shows as queued. A run covers only the
 pipelines whose trigger wants it, so running one never runs the others.

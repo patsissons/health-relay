@@ -18,7 +18,7 @@ settings:
     # The screens' strings go in HealthDataRelay/Localizable.xcstrings as Xcode builds. English is all that's translated so far.
     SWIFT_EMIT_LOC_STRINGS: YES
     LOCALIZATION_PREFERS_STRING_CATALOGS: YES
-    CURRENT_PROJECT_VERSION: "8"
+    CURRENT_PROJECT_VERSION: "9"
 packages:
   HealthDataRelayKit:
     path: HealthDataRelayKit
@@ -142,8 +142,12 @@ targets:
     platform: iOS
     sources:
       - path: HealthDataRelayUITests
+      # SKTestSession loads the products from the test bundle.
+      - path: HealthDataRelay.storekit
+        buildPhase: resources
     dependencies:
       - target: HealthDataRelay
+      - sdk: StoreKitTest.framework
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.patsissons.healthdatarelay.uitests
@@ -164,6 +168,8 @@ schemes:
         HealthDataRelay: all
     run:
       config: Debug
+      # Simulator purchases against the products in this file, no App Store needed.
+      storeKitConfiguration: HealthDataRelay.storekit
     test:
       config: Debug
       targets:

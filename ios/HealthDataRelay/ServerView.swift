@@ -137,13 +137,25 @@ final class ServerController {
 struct ServerView: View {
     @Environment(AppModel.self) private var model
     @State private var showToken = false
+    @State private var unlocking = false
 
     private var server: ServerController { model.server }
 
     var body: some View {
         Form {
+            if !model.store.access.allowsServer {
+                Section {
+                    Button {
+                        unlocking = true
+                    } label: {
+                        Label("The server needs Health Data Relay Full", systemImage: "lock.fill")
+                    }
+                    .accessibilityIdentifier("server-needs-full")
+                }
+            }
             Section {
                 Toggle("MCP server", isOn: Binding { server.settings.mcpOn } set: { on in
+                    if on, !model.store.access.allowsServer { unlocking = true; return }
                     Task {
                         if on { await model.allowEveryType() }
                         await server.update { $0.mcpOn = on }
@@ -189,6 +201,7 @@ struct ServerView: View {
 
             Section {
                 Toggle("Plain TCP server", isOn: Binding { server.settings.tcpOn } set: { on in
+                    if on, !model.store.access.allowsServer { unlocking = true; return }
                     Task {
                         if on { await model.allowEveryType() }
                         await server.update { $0.tcpOn = on }
@@ -215,6 +228,7 @@ struct ServerView: View {
             }
         }
         .navigationTitle("Server")
+        .sheet(isPresented: $unlocking) { UnlockView() }
         .navigationBarTitleDisplayMode(.inline)
     }
 }

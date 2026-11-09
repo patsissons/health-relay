@@ -6,7 +6,7 @@ Draft text for App Store Connect. It names no other app, on purpose (guidelines 
 
 **Subtitle (30):** Your Health data, your way
 
-**Promotional text (170):** Send your Apple Health data anywhere you choose, in any format, on your schedule. No account, no server of ours, nothing to pay.
+**Promotional text (170):** Send your Apple Health data anywhere you choose, in any format, on your schedule. Try everything free for 7 days. No account, no server of ours.
 
 **Keywords (100):** health,export,json,csv,apple health,webhook,mqtt,dashboard,gpx,api,data,backup,sync
 
@@ -34,6 +34,14 @@ Ask about your data from AI tools on your own network. Charts, widgets, Shortcut
 PRIVATE BY DESIGN
 There's no account and no server of ours. Your data goes only where you send it, directly from your iPhone. There's no analytics, advertising or tracking.
 
+TRY IT FREE
+Try everything free for 7 days, with nothing to cancel. After that, running pipelines when you tap Run, exports and charts stay free. Health Data Relay Full adds pipelines that run by themselves, Shortcuts and widget runs, the server for AI tools and the Mac, and your own templates: $0.99 a month, $4.99 a year, or $14.99 once.
+
+Monthly and yearly plans renew automatically unless cancelled at least 24 hours before the end of the period, and are charged to your Apple Account. Manage or cancel them in your Apple Account settings.
+
+Terms of Use: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+Privacy Policy: https://health-data-relay.lgtm.page/privacy/
+
 Health Data Relay moves data. It doesn't give medical advice.
 
 **What's new:** First release.
@@ -47,6 +55,8 @@ Health Data Relay moves data. It doesn't give medical advice.
 Health Data Relay has no account and no backend: it reads HealthKit and sends data to destinations the user configures, directly from the device.
 
 To try it without any server: allow Health access, tap Export at the top left of Pipelines, choose a format and dates, tap Export, then Share the file it writes (save it to Files or mail it). For a repeating pipeline, tap +, pick a template, choose Share sheet or Files as the destination and tap Run now. REST API, MQTT and email destinations are for services the user runs themselves, built from the published schema at https://health-data-relay.lgtm.page/reference/schema/. Debug-only sample data isn't in this build, so a device with Health data shows the most.
+
+Purchases: everything is free for 7 days through a $0 "7-day Trial" in-app purchase (guideline 3.1.1); Settings › Health Data Relay Full › Unlock everything offers it. After the trial the app stays useful for free: pipelines run when tapped, and Export and Charts work. Full (monthly or yearly subscription, or a one-time lifetime purchase) adds automatic triggers, Shortcuts and widget runs, the local server and custom templates. Restore Purchases is in Settings and on the unlock screen.
 
 HealthKit data is only ever sent to a destination the user adds. Each add shows where it will go first. Nothing is stored in iCloud: the iCloud Drive option is off in this build. Templates are declarative Liquid text with no access to the network or files, and run no code.
 

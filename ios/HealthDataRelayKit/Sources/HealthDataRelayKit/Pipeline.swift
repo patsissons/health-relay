@@ -121,6 +121,8 @@ public struct Pipeline: Sendable, Identifiable, Equatable {
         case whenHealthChanges
         case next(Date)
         case due(Due)
+        /// Set to run by itself, but the free tier only runs it when tapped.
+        case needsFullAccess
     }
 
     public var destination: Destination
@@ -142,6 +144,8 @@ public struct Pipeline: Sendable, Identifiable, Equatable {
     public var name: String { destination.name }
     /// Set for a template pipeline; nil for the native push.
     public var definition: PipelineDefinition?
+    /// False on the free tier, where only a tap runs a pipeline.
+    public var automatic = true
     public var extract: ExtractSpec { definition?.extract ?? .changedDays }
 
     public var transform: TransformSpec {
@@ -162,6 +166,7 @@ public struct Pipeline: Sendable, Identifiable, Equatable {
     }
 
     public func timing(now: Date) -> Timing {
+        if !automatic, trigger != .manual { return .needsFullAccess }
         switch trigger {
         case .manual:
             return .whenTapped

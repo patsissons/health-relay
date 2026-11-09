@@ -27,6 +27,8 @@ holder.
 - [x] Build 0.1 (7) uploaded, showing overall and step progress as two bars
       that no longer jump back.
 - [x] Build 1.0 (8) uploaded, the first 1.0 build, for App Review.
+- [x] Build 1.0 (9) uploaded, with the 7-day trial and Full (monthly, yearly
+      or lifetime). This is the build for App Review.
 
 ## Code (M2 to M5)
 
@@ -78,10 +80,30 @@ holder.
 | App Privacy | Likely "Data Not Collected", since the developer never receives the data. Check against the targets M5 ships |
 | Age rating | Answer the questionnaire, including the social media questions |
 | Content rights | Set up in App Information |
-| Price | Free, no in-app purchases |
-| Screenshots | UI test on iPhone 18 Pro Max, for 6.9-inch |
+| Price | Free download with in-app purchases (below) |
+| Screenshots | iPhone 6.3-inch (1206×2622) and iPad 13-inch (2064×2752), from `testAddPipelineTestAndRun` |
 | Description, keywords, review notes | Drafted in LISTING.md. Say how to reach the demo receiver |
 | App Review contact | Name, phone and email |
+
+## In-app purchases
+
+The 7-day trial, then a subscription or a one-time unlock. The free tier runs
+pipelines when tapped, plus Export and Charts. Full adds automatic triggers,
+Shortcuts and widget runs, the server and custom templates.
+
+| Product | Type | Price (US) |
+| --- | --- | --- |
+| `com.patsissons.healthdatarelay.trial7` "7-day Trial" | Non-consumable | $0 |
+| `com.patsissons.healthdatarelay.monthly` | Auto-renewable, group "Full access" | $0.99/month |
+| `com.patsissons.healthdatarelay.yearly` | Auto-renewable, group "Full access" | $4.99/year |
+| `com.patsissons.healthdatarelay.lifetime` | Non-consumable | $14.99 |
+
+- [x] Paid Applications agreement, banking and tax details: active.
+- [x] Create the four products, each with a review screenshot of the unlock screen.
+- [ ] Select them on the 1.0 version page, so they go to review with it.
+- [ ] Try the trial and a purchase with a sandbox account on the TestFlight build.
+
+`ios/HealthDataRelay.storekit` mirrors these for the simulator and the UI tests.
 
 ## Submit (human)
 

@@ -1,4 +1,5 @@
 import CryptoKit
+import StoreKitTest
 import XCTest
 
 /// End to end on a simulator: allow Health, seed a week, add a pipeline,
@@ -14,7 +15,7 @@ final class HealthDataRelayUITests: XCTestCase {
     override func setUp() async throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = ["-reset"]
+        app.launchArguments = ["-reset", "-access", "full"]
         app.launch()
     }
 
@@ -44,7 +45,7 @@ final class HealthDataRelayUITests: XCTestCase {
 
         // The rest without the Debug-only Seed tab, for clean screenshots.
         app.terminate()
-        app.launchArguments = ["-hideSeed"]
+        app.launchArguments = ["-hideSeed", "-access", "full"]
         app.launch()
 
         // A pipeline, manual unless told otherwise.
@@ -120,7 +121,7 @@ final class HealthDataRelayUITests: XCTestCase {
     func testScheduledPipelineCountsDown() throws {
         // Without the Debug-only Seed tab: its screenshot is on the site.
         app.terminate()
-        app.launchArguments = ["-hideSeed"]
+        app.launchArguments = ["-hideSeed", "-access", "full"]
         app.launch()
         let add = app.buttons["add-pipeline"]
         XCTAssertTrue(add.waitForExistence(timeout: 30))
@@ -142,6 +143,109 @@ final class HealthDataRelayUITests: XCTestCase {
         let ticked = NSPredicate(format: "label != %@", first)
         expectation(for: ticked, evaluatedWith: countdown)
         waitForExpectations(timeout: 5)
+    }
+
+    /// Free runs pipelines by hand: a scheduled one keeps its trigger but
+    /// shows Run and a lock, and the server asks for Full.
+    func testFreeRunsPipelinesByHand() throws {
+        app.terminate()
+        app.launchArguments = ["-reset", "-hideSeed", "-access", "free"]
+        app.launch()
+        XCTAssertTrue(app.buttons["offer-unlock"].waitForExistence(timeout: 30), "free offers the trial")
+        let add = app.buttons["add-pipeline"]
+        XCTAssertTrue(add.waitForExistence(timeout: 10))
+        add.tap()
+        type("pipeline-name", "Hourly")
+        type("pipeline-url", "http://127.0.0.1:8787/")
+        app.swipeUp()
+        app.buttons["Every"].tap()
+        // Choosing a trigger that runs by itself offers Full.
+        let done = app.buttons["unlock-done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        snap("unlock-sheet")
+        done.tap()
+        XCTAssertTrue(app.buttons["trigger-needs-full"].waitForExistence(timeout: 5))
+        app.buttons["save-pipeline"].tap()
+        if app.buttons["Not Now"].waitForExistence(timeout: 2) { app.buttons["Not Now"].tap() }
+
+        XCTAssertTrue(app.buttons["run-Hourly"].waitForExistence(timeout: 10), "free can still run it by hand")
+        XCTAssertFalse(app.staticTexts["next-run"].exists, "and nothing counts down")
+        let lock = app.buttons["needs-full-Hourly"]
+        XCTAssertTrue(lock.exists)
+        lock.tap()
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        done.tap()
+
+        tab("Settings")
+        XCTAssertTrue(app.staticTexts["Free"].waitForExistence(timeout: 5) || text("Free").exists)
+        app.buttons["server"].tap()
+        XCTAssertTrue(app.buttons["server-needs-full"].waitForExistence(timeout: 5))
+    }
+
+    /// The $0 trial, bought through StoreKit testing, unlocks for 7 days.
+    func testStartingTheTrialUnlocks() throws {
+        let session = try SKTestSession(configurationFileNamed: "HealthDataRelay")
+        session.resetToDefaultState()
+        session.clearTransactions()
+        session.disableDialogs = true
+        app.terminate()
+        app.launchArguments = ["-reset", "-hideSeed"]
+        app.launch()
+        tab("Settings")
+        let status = app.descendants(matching: .any)["access-status"]
+        XCTAssertTrue(status.waitForExistence(timeout: 10))
+        if !text("Trial").exists {
+            app.buttons["settings-unlock"].tap()
+            let trial = app.buttons["start-trial"]
+            XCTAssertTrue(trial.waitForExistence(timeout: 10))
+            // Prices come from the StoreKit configuration.
+            let enabled = NSPredicate(format: "isEnabled == true")
+            expectation(for: enabled, evaluatedWith: trial)
+            waitForExpectations(timeout: 15)
+            trial.tap()
+            confirmPurchase()
+        }
+        XCTAssertTrue(text("Trial: 7 days left").waitForExistence(timeout: 15))
+    }
+
+    /// Lifetime, bought through StoreKit testing, is Full for good.
+    func testBuyingLifetime() throws {
+        let session = try SKTestSession(configurationFileNamed: "HealthDataRelay")
+        session.resetToDefaultState()
+        session.clearTransactions()
+        session.disableDialogs = true
+        app.terminate()
+        app.launchArguments = ["-reset", "-hideSeed"]
+        app.launch()
+        tab("Settings")
+        let unlock = app.buttons["settings-unlock"]
+        XCTAssertTrue(unlock.waitForExistence(timeout: 10))
+        unlock.tap()
+        let lifetime = app.buttons["buy-lifetime"]
+        XCTAssertTrue(app.buttons["unlock-done"].waitForExistence(timeout: 10))
+        if !lifetime.waitForExistence(timeout: 3) { app.swipeUp() }
+        XCTAssertTrue(lifetime.waitForExistence(timeout: 10))
+        expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: lifetime)
+        waitForExpectations(timeout: 15)
+        XCTAssertTrue(lifetime.label.contains("14.99"), "the price comes from StoreKit: \(lifetime.label)")
+        lifetime.tap()
+        confirmPurchase()
+        XCTAssertTrue(text("Lifetime").waitForExistence(timeout: 15))
+        XCTAssertFalse(app.buttons["settings-unlock"].exists)
+    }
+
+    /// StoreKit testing's purchase sheet, in the app or from the system.
+    private func confirmPurchase() {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        for _ in 0..<20 {
+            for source in [app!, springboard] {
+                for label in ["Get", "Purchase", "Subscribe", "Confirm", "Buy", "OK"] {
+                    let b = source.buttons[label]
+                    if b.exists && b.isHittable { b.tap(); return }
+                }
+            }
+            sleep(1)
+        }
     }
 
     /// A trigger can change from the editor, and the card follows it.
@@ -223,7 +327,7 @@ final class HealthDataRelayUITests: XCTestCase {
     func testTemplatePipelineRuns() throws {
         let receiver = (env["RECEIVER_URL"] ?? "http://127.0.0.1:8787/") + "any"
         let app = XCUIApplication()
-        app.launchArguments = ["-reset"]
+        app.launchArguments = ["-reset", "-access", "full"]
         app.launch()
         tab("Seed")
         app.buttons["seed"].tap()
@@ -722,7 +826,7 @@ final class HealthDataRelayUITests: XCTestCase {
         XCTAssertEqual(field.value as? String, "Pat's phone")
 
         app.terminate()
-        app.launchArguments = ["-hideSeed"]
+        app.launchArguments = ["-hideSeed", "-access", "full"]
         app.launch()
         tab("Settings")
         XCTAssertTrue(field.waitForExistence(timeout: 10))
@@ -791,7 +895,7 @@ final class HealthDataRelayUITests: XCTestCase {
         XCTAssertEqual(app.state, .runningForeground)
 
         app.terminate()
-        app.launchArguments = ["-hideSeed"]
+        app.launchArguments = ["-hideSeed", "-access", "full"]
         app.launch()
         tab("Pipelines")
         XCTAssertTrue(app.staticTexts.matching(identifier: "Cubby").firstMatch.waitForExistence(timeout: 10))
