@@ -39,6 +39,22 @@ import Testing
         #expect(Access.resolve(lifetime: false, subscription: nil, trialStartedAt: start, now: later) == .free)
     }
 
+    @Test func theTrialStartsAtTheFirstDownload() {
+        let downloaded = start.addingTimeInterval(-3 * 86400)
+        #expect(Access.trialStart(firstDownload: downloaded, fromAppStore: true, firstLaunch: start) == downloaded)
+        // A reinstall months later finds the trial long over.
+        let reinstalled = Access.resolve(lifetime: false, subscription: nil,
+                                         trialStartedAt: Access.trialStart(firstDownload: downloaded, fromAppStore: true, firstLaunch: start.addingTimeInterval(90 * 86400)),
+                                         now: start.addingTimeInterval(90 * 86400))
+        #expect(reinstalled == .free)
+    }
+
+    @Test func outsideTheAppStoreItStartsAtFirstLaunch() {
+        let sandboxDate = Date(timeIntervalSinceReferenceDate: 397033200)
+        #expect(Access.trialStart(firstDownload: sandboxDate, fromAppStore: false, firstLaunch: start) == start)
+        #expect(Access.trialStart(firstDownload: nil, fromAppStore: true, firstLaunch: start) == start)
+    }
+
     @Test func roundTripsForTheCache() throws {
         for a in [Access.free, .trial(endsAt: start), .full(.yearly)] {
             #expect(try JSONDecoder().decode(Access.self, from: JSONEncoder().encode(a)) == a)

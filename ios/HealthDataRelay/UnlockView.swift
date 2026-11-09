@@ -2,8 +2,8 @@ import HealthDataRelayKit
 import StoreKit
 import SwiftUI
 
-/// What Full adds, the trial, the three ways to pay, and the terms
-/// subscriptions must show (guideline 3.1.2).
+/// What Full adds, how long the trial has left, the three ways to pay, and
+/// the terms subscriptions must show (guideline 3.1.2).
 struct UnlockView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -30,19 +30,19 @@ struct UnlockView: View {
                 Section {
                     LabeledContent("Now", value: store.statusText())
                         .accessibilityIdentifier("unlock-status")
-                    if !store.trialUsed, store.access.isFree {
-                        buy(Store.trialID, title: "Try everything free for 7 days", detail: "No charge, and nothing renews. After 7 days, pipelines run when you tap Run until you choose a plan.", prominent: true)
-                            .accessibilityIdentifier("start-trial")
+                } footer: {
+                    if case .trial(let end) = store.access {
+                        Text("Everything is unlocked free until \(end.formatted(date: .abbreviated, time: .shortened)), with nothing to cancel. After that, pipelines run when you tap Run until you choose a plan.")
                     }
                 }
 
                 if !isFull {
                     Section {
-                        buy(Store.monthlyID, title: "Monthly", detail: "Renews each month.", prominent: false)
+                        buy(Store.monthlyID, title: "Monthly", detail: "Renews each month.")
                             .accessibilityIdentifier("buy-monthly")
-                        buy(Store.yearlyID, title: "Yearly", detail: "Renews each year.", prominent: false)
+                        buy(Store.yearlyID, title: "Yearly", detail: "Renews each year.")
                             .accessibilityIdentifier("buy-yearly")
-                        buy(Store.lifetimeID, title: "Lifetime", detail: "Pay once. Yours to keep.", prominent: false)
+                        buy(Store.lifetimeID, title: "Lifetime", detail: "Pay once. Yours to keep.")
                             .accessibilityIdentifier("buy-lifetime")
                     } header: {
                         Text("Choose a plan")
@@ -92,7 +92,7 @@ struct UnlockView: View {
     }
 
     @ViewBuilder
-    private func buy(_ id: String, title: String, detail: String, prominent: Bool) -> some View {
+    private func buy(_ id: String, title: String, detail: String) -> some View {
         let product = store.products[id]
         Button {
             Task {
@@ -101,7 +101,7 @@ struct UnlockView: View {
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(prominent ? .headline : .body)
+                    Text(title)
                     Text(detail).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -118,7 +118,6 @@ struct UnlockView: View {
     }
 
     private func price(_ product: Product) -> String {
-        if product.price == 0 { return "Free" }
         switch product.subscription?.subscriptionPeriod.unit {
         case .month: return "\(product.displayPrice)/month"
         case .year: return "\(product.displayPrice)/year"
@@ -127,47 +126,68 @@ struct UnlockView: View {
     }
 }
 
-/// On the Pipelines screen: the offer of a trial, or how long is left.
+/// On the Pipelines screen. A first launch says what the trial is, how long
+/// it lasts, what stops and what it costs after (guideline 3.1.1); once
+/// read, a small line counts down. When it ends, a card offers the plans.
 struct AccessNotice: View {
     @Environment(AppModel.self) private var model
-    @AppStorage("trialOfferDismissed") private var dismissed = false
+    @AppStorage("trialNoticeRead") private var trialRead = false
+    @AppStorage("trialEndedDismissed") private var endedDismissed = false
     @State private var unlocking = false
+
+    private var store: Store { model.store }
 
     var body: some View {
         Group {
-            switch model.store.access {
+            switch store.access {
+            case .trial where !trialRead:
+                card("Everything is free for \(Store.days(store.access.trialDaysLeft(now: .now) ?? 0))",
+                     "Pipelines run by themselves, from Shortcuts and widgets, serve AI tools, and use your own templates. Nothing to buy or cancel. After the trial, pipelines run when you tap Run unless you choose a plan\(fromPrice).",
+                     symbol: "sparkles", primary: "See plans", secondary: "Got it") { trialRead = true }
             case .trial:
                 Button {
                     unlocking = true
                 } label: {
-                    Label("Trial: \(Store.days(model.store.access.trialDaysLeft(now: .now) ?? 0)) left. Choose a plan", systemImage: "hourglass")
+                    Label("Trial: \(Store.days(store.access.trialDaysLeft(now: .now) ?? 0)) left. Choose a plan", systemImage: "hourglass")
                         .font(.subheadline)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .accessibilityIdentifier("trial-status")
-            case .free where !dismissed:
-                VStack(alignment: .leading, spacing: 8) {
-                    Label(model.store.trialUsed ? "Your trial has ended" : "Try everything free for 7 days", systemImage: "sparkles")
-                        .font(.headline)
-                    Text(model.store.trialUsed
-                         ? "Pipelines still run when you tap Run. Unlock Full to run them by themselves again."
-                         : "Run pipelines by themselves, from Shortcuts and widgets, serve AI tools, and write your own templates.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    HStack {
-                        Button(model.store.trialUsed ? "See plans" : "Start free trial") { unlocking = true }
-                            .buttonStyle(.borderedProminent)
-                            .accessibilityIdentifier("offer-unlock")
-                        Button("Not now") { dismissed = true }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
-                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16))
+            case .free where !endedDismissed:
+                card("Your trial has ended",
+                     "Pipelines still run when you tap Run. Choose a plan to run them by themselves again\(fromPrice).",
+                     symbol: "hourglass.bottomhalf.filled", primary: "See plans", secondary: "Not now") { endedDismissed = true }
             default:
                 EmptyView()
             }
         }
         .sheet(isPresented: $unlocking) { UnlockView() }
+        .task { await store.loadProducts() }
+    }
+
+    /// ", from $0.99 a month", once StoreKit has the price.
+    private var fromPrice: String {
+        guard let monthly = store.products[Store.monthlyID] else { return "" }
+        return ", from \(monthly.displayPrice) a month"
+    }
+
+    private func card(_ title: String, _ detail: String, symbol: String, primary: String, secondary: String, dismiss: @escaping () -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(title, systemImage: symbol)
+                .font(.headline)
+            Text(detail)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            HStack {
+                Button(primary) { unlocking = true }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("offer-unlock")
+                Button(secondary, action: dismiss)
+                    .accessibilityIdentifier("dismiss-notice")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 16))
     }
 }

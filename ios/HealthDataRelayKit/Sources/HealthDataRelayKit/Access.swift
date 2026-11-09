@@ -26,6 +26,15 @@ public enum Access: Sendable, Equatable, Codable {
         return .free
     }
 
+    /// When the trial began: the first download on this Apple ID, from the
+    /// App Store. TestFlight and the sandbox (where App Review tests) give a
+    /// fixed 2013 date, and an offline launch gives none, so there the first
+    /// launch on this device counts instead.
+    public static func trialStart(firstDownload: Date?, fromAppStore: Bool, firstLaunch: Date) -> Date {
+        if fromAppStore, let firstDownload { return firstDownload }
+        return firstLaunch
+    }
+
     public var isFree: Bool { self == .free }
 
     /// Automatic triggers, background runs, Shortcuts and widget runs.

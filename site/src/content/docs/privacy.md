@@ -17,7 +17,7 @@ If you turn on the server in Settings, tools on your own network that have its t
 
 The app includes no analytics, advertising or tracking.
 
-Purchases and the free trial go through Apple's App Store. The app never sees your payment details, and nothing about what you bought is sent anywhere by the app.
+Purchases go through Apple's App Store. The app never sees your payment details, and nothing about what you bought is sent anywhere by the app. The free trial counts from when you first downloaded the app, which the App Store tells the app on your iPhone; that date isn't sent anywhere either.
 
 ## What's kept on your iPhone
 

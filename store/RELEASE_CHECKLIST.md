@@ -28,7 +28,9 @@ holder.
       that no longer jump back.
 - [x] Build 1.0 (8) uploaded, the first 1.0 build, for App Review.
 - [x] Build 1.0 (9) uploaded, with the 7-day trial and Full (monthly, yearly
-      or lifetime). This is the build for App Review.
+      or lifetime).
+- [ ] Build 1.0 (10) uploaded, starting the trial at the first download
+      instead of a $0 trial purchase. This is the build for App Review.
 
 ## Code (M2 to M5)
 
@@ -87,19 +89,23 @@ holder.
 
 ## In-app purchases
 
-The 7-day trial, then a subscription or a one-time unlock. The free tier runs
+Everything is free for 7 days from the first download (StoreKit's
+`AppTransaction.originalPurchaseDate`; in TestFlight and the sandbox, which give
+a fixed 2013 date, the first launch on the device), then a subscription or a
+one-time unlock. The free tier runs
 pipelines when tapped, plus Export and Charts. Full adds automatic triggers,
 Shortcuts and widget runs, the server and custom templates.
 
 | Product | Type | Price (US) |
 | --- | --- | --- |
-| `com.patsissons.healthdatarelay.trial7` "7-day Trial" | Non-consumable | $0 |
 | `com.patsissons.healthdatarelay.monthly` | Auto-renewable, group "Full access" | $0.99/month |
 | `com.patsissons.healthdatarelay.yearly` | Auto-renewable, group "Full access" | $4.99/year |
 | `com.patsissons.healthdatarelay.lifetime` | Non-consumable | $14.99 |
 
 - [x] Paid Applications agreement, banking and tax details: active.
-- [x] Create the four products, each with a review screenshot of the unlock screen.
+- [x] Create the products, each with a review screenshot of the unlock screen.
+- [x] Take the old $0 `trial7` "7-day Trial" out of the review submission. It
+      was never submitted; it stays in App Store Connect unused.
 - [ ] Select them on the 1.0 version page, so they go to review with it.
 - [ ] Try the trial and a purchase with a sandbox account on the TestFlight build.
 

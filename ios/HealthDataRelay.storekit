@@ -3,21 +3,6 @@
   "nonRenewingSubscriptions": [],
   "products": [
     {
-      "displayPrice": "0.0",
-      "familyShareable": false,
-      "internalID": "6800000001",
-      "localizations": [
-        {
-          "description": "Try everything in Health Data Relay free for 7 days.",
-          "displayName": "7-day Trial",
-          "locale": "en_US"
-        }
-      ],
-      "productID": "com.patsissons.healthdatarelay.trial7",
-      "referenceName": "7-day Trial",
-      "type": "NonConsumable"
-    },
-    {
       "displayPrice": "14.99",
       "familyShareable": false,
       "internalID": "6800000002",
