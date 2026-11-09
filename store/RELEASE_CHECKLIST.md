@@ -27,6 +27,8 @@ holder.
 - [x] Build 0.1 (7) uploaded, showing overall and step progress as two bars
       that no longer jump back.
 - [x] Build 1.0 (8) uploaded, the first 1.0 build, for App Review.
+- [x] Build 1.0 (9) uploaded, with the 7-day trial and Full (monthly, yearly
+      or lifetime). This is the build for App Review.
 
 ## Code (M2 to M5)
 
@@ -96,8 +98,8 @@ Shortcuts and widget runs, the server and custom templates.
 | `com.patsissons.healthdatarelay.yearly` | Auto-renewable, group "Full access" | $4.99/year |
 | `com.patsissons.healthdatarelay.lifetime` | Non-consumable | $14.99 |
 
-- [ ] **Human:** accept the Paid Applications agreement and enter banking and tax details.
-- [ ] Create the four products, each with a review screenshot of the unlock screen.
+- [x] Paid Applications agreement, banking and tax details: active.
+- [x] Create the four products, each with a review screenshot of the unlock screen.
 - [ ] Select them on the 1.0 version page, so they go to review with it.
 - [ ] Try the trial and a purchase with a sandbox account on the TestFlight build.
 
