@@ -46,7 +46,7 @@ Health Data Relay moves data. It doesn't give medical advice.
 
 Health Data Relay has no account and no backend: it reads HealthKit and sends data to destinations the user configures, directly from the device.
 
-To try it: allow Health access, tap +, name a pipeline and enter a web address, then tap Run. A reviewer can use [demo receiver URL, to be set up, see RELEASE_CHECKLIST.md] with bearer token [token]. Debug-only sample data isn't in this build, so a device with Health data shows the most.
+To try it without any server: allow Health access, tap Export at the top left of Pipelines, choose a format and dates, tap Export, then Share the file it writes (save it to Files or mail it). For a repeating pipeline, tap +, pick a template, choose Share sheet or Files as the destination and tap Run now. REST API, MQTT and email destinations are for services the user runs themselves, built from the published schema at https://health-data-relay.lgtm.page/reference/schema/. Debug-only sample data isn't in this build, so a device with Health data shows the most.
 
 HealthKit data is only ever sent to a destination the user adds. Each add shows where it will go first. Nothing is stored in iCloud: the iCloud Drive option is off in this build. Templates are declarative Liquid text with no access to the network or files, and run no code.
 

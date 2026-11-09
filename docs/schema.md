@@ -34,7 +34,7 @@ days (Health Data Relay sends at most 7 days or about 1 MB per batch, see
 ```jsonc
 {
   "schema": "apple-push/1",
-  "device": { "name": "Pat’s iPhone", "model": "iPhone17,1", "os": "26.0", "app": "Health Data Relay 0.1" },
+  "device": { "name": "Pat’s iPhone", "model": "iPhone17,1", "os": "26.0", "app": "Health Data Relay 1.0" },
   "exportedAt": "2026-10-25T14:00:00Z",      // when the phone read Health, UTC; the push's as-of
   "tz": "America/Vancouver",                 // the phone's time zone when it read
   "days": ["2026-10-24", "2026-10-25"],      // every local day this push describes in full
@@ -227,7 +227,7 @@ body also exercises a receiver's rejections, so the fixture differs:
   type in one unit; a receiver still converts whatever unit it gets);
 - `stats` are ordered by day, type and source, and `samples` by start, type,
   source, end and value, which is the order Health Data Relay sends;
-- `device.app` is `Health Data Relay 0.1`;
+- `device.app` is `Health Data Relay 1.0`;
 - the mindful session's value is `HKCategoryValueNotApplicable`, not `""`;
 - the ECG is decimated to 128 Hz on the phone (256 samples at `rate: 128`
   instead of 1024 at 512); the trace a receiver keeps is the same.

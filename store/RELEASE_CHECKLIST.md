@@ -26,6 +26,7 @@ holder.
 - [x] Build 0.1 (6) uploaded, keeping the phone awake during a run.
 - [x] Build 0.1 (7) uploaded, showing overall and step progress as two bars
       that no longer jump back.
+- [x] Build 1.0 (8) uploaded, the first 1.0 build, for App Review.
 
 ## Code (M2 to M5)
 
@@ -38,7 +39,7 @@ holder.
 - [x] `NSLocalNetworkUsageDescription`, since the app allows LAN destinations.
 - [ ] A universal link route for setup links. They carry bearer tokens, and
       another app could claim the `healthdatarelay://` scheme.
-- [ ] `MARKETING_VERSION` from 0.1 to 1.0. `device.app` in every push changes
+- [x] `MARKETING_VERSION` from 0.1 to 1.0. `device.app` in every push changes
       with it.
 
 ## Cloud accounts (human, for the build that ships them)
@@ -58,12 +59,14 @@ holder.
 
 ## Site
 
-- [ ] Privacy policy hosted publicly, covering what the app reads, that it has
-      no server, how to revoke access and how to delete data. Written, at
-      `site/src/content/docs/privacy.md`; needs the site deployed.
-- [ ] A support URL with a contact address.
-- [ ] A public demo receiver that accepts a test token. A reviewer can't reach
-      `tools/receiver.mjs` on a LAN and needs a working destination.
+- [x] Privacy policy hosted publicly at
+      https://health-data-relay.lgtm.page/privacy/, covering what the app reads,
+      that it has no server, how to revoke access and how to delete data.
+- [x] Support URL: the site, which links GitHub and has a Contact section on
+      the privacy page (GitHub issues).
+- [x] No public demo receiver: the review notes send reviewers through Export
+      and the share sheet, which need no server. Web, MQTT and email
+      destinations are for services users run themselves.
 
 ## App Store Connect (human)
 
