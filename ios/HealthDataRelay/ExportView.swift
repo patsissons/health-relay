@@ -19,7 +19,7 @@ struct ExportView: View {
         Form {
             Section {
                 Picker("Template", selection: $template) {
-                    ForEach(model.library.entries()) { Text($0.name).tag(TemplateLibrary.Entry?.some($0)) }
+                    ForEach(templates) { Text($0.name).tag(TemplateLibrary.Entry?.some($0)) }
                 }
                 .accessibilityIdentifier("export-template")
             }
@@ -101,7 +101,15 @@ struct ExportView: View {
             }
         }
         .onAppear {
-            if template == nil { template = model.library.entries().first }
+            if template == nil { template = templates.first }
+        }
+    }
+
+    /// Your own templates come with Full; the built-in ones are always there.
+    private var templates: [TemplateLibrary.Entry] {
+        model.library.entries().filter { entry in
+            if case .builtIn = entry.ref { return true }
+            return model.store.access.allowsCustomTemplates
         }
     }
 
@@ -129,58 +137,6 @@ struct ExportView: View {
     }
 }
 
-/// Dates picked by hand: a preset, or nil for the two dates.
-private struct DateChoice {
-    var preset: DateRangePreset? = .last7Days
-    var from = Calendar.current.date(byAdding: .day, value: -7, to: .now)!
-    var to = Date.now
-
-    var interval: DateInterval {
-        let calendar = Calendar.local()
-        if let preset { return preset.interval(now: .now, calendar: calendar) }
-        let start = calendar.startOfDay(for: from)
-        let last = min(calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: to))!, .now)
-        return DateInterval(start: start, end: max(last, start.addingTimeInterval(1)))
-    }
-}
-
-/// The range picker, and the two dates when it's on Custom.
-private struct DateChoiceFields: View {
-    @Binding var dates: DateChoice
-    let id: String
-
-    var body: some View {
-        Picker("Range", selection: $dates.preset) {
-            ForEach(DateRangePreset.allCases, id: \.self) { Text($0.title).tag(DateRangePreset?.some($0)) }
-            Text("Custom").tag(DateRangePreset?.none)
-        }
-        .accessibilityIdentifier(id)
-        .onChange(of: dates.preset) { old, new in
-            // Custom starts from what was just showing.
-            guard new == nil, let interval = old?.interval(now: .now, calendar: Calendar.local()) else { return }
-            dates.from = interval.start
-            dates.to = interval.end
-        }
-        if dates.preset == nil {
-            DatePicker("From", selection: $dates.from, in: ...dates.to, displayedComponents: .date)
-                .accessibilityIdentifier("range-from")
-            DatePicker("To", selection: $dates.to, in: dates.from...Date.now, displayedComponents: .date)
-        }
-    }
-}
-
-extension DateRangePreset {
-    fileprivate var title: String {
-        switch self {
-        case .last24Hours: "Last 24 hours"
-        case .last7Days: "Last 7 days"
-        case .last30Days: "Last 30 days"
-        case .last90Days: "Last 90 days"
-        case .last365Days: "Last 365 days"
-        }
-    }
-}
-
 /// Recent workouts to pick one from.
 private struct WorkoutPicker: View {
     @Environment(AppModel.self) private var model
@@ -192,7 +148,7 @@ private struct WorkoutPicker: View {
         List {
             if let workouts {
                 if workouts.isEmpty {
-                    Text("No workouts in the last 90 days").foregroundStyle(.secondary)
+                    Text("No workouts in the last \(model.workoutListDays) days").foregroundStyle(.secondary)
                 }
                 ForEach(workouts, id: \.id) { w in
                     Button {

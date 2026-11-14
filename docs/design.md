@@ -330,12 +330,39 @@ ID, which StoreKit's app transaction gives, so reinstalling doesn't restart it.
 TestFlight and the sandbox give a fixed 2013 date instead, so there it counts
 from the first launch on the device.
 
-On the free tier, after the trial, nothing runs by itself: the engine
-treats no pipeline as due or following Health, asks iOS for no background
-time and registers no change notifications, while every pipeline still runs
-when tapped. Triggers stay saved, so unlocking Full (a subscription or a
-one-time purchase) resumes them as they were. The app also gates Shortcuts
-and widget runs, the server and writing templates.
+On the free tier, after the trial, no pipeline runs: the engine treats none
+as due or following Health, asks iOS for no background time, registers no
+change notifications, and refuses a tapped Run or Re-send too (the card shows
+a lock instead of Run). Pipelines and their triggers stay saved, so unlocking
+Full (a subscription or a one-time purchase) resumes them as they were. Test
+still works, since it sends no Health data. The app also gates Shortcuts and
+widget runs, the server and writing templates. Export and Charts stay free.
+
+Until Full is bought, in the trial and on the free tier, Health is read no
+further back than local midnight seven days before today (`HistoryLimit`):
+the seven whole days before today plus today so far. It holds everywhere
+Health is read:
+
+- A run's range is cut to start at that limit before it is planned, so the
+  output's dates and file names say what is in it. A range wholly older fails
+  with a message rather than sending nothing.
+- Changed days older than the limit are dropped whole and never listed. A
+  listed day that arrives empty removes that day at the destination, so a day
+  out of reach must not be sent at all. Dirty days already saved are pruned
+  when the limit is set and as each day passes.
+- Every read goes through `CappedHealthQuerying`, which catches what widens
+  after planning: a week, month or year bucket grown to its whole length
+  (the first bucket then holds only the days in reach), late samples, and a
+  workout's heart rate. Sleep may reach one evening earlier, so the first
+  night is whole.
+- Export, Charts, the MCP server and the Mac dashboard are cut the same way.
+  Longer choices show a lock and open the plans. An MCP answer that was cut
+  says so in a second text item.
+
+A report's comparison may read fourteen days, to set the last seven against
+the seven before; nothing else gets the wider window. Buying Full lifts the
+limit, and the days a weekly sweep covers are marked once so destinations
+catch up on what was held back.
 
 One run at a time: a trigger that arrives during a run waits for it rather
 than starting a second, and a tapped Run shows as queued. A run covers only the

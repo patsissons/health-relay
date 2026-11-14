@@ -6,8 +6,9 @@ import SwiftUI
 struct ChartsView: View {
     @Environment(AppModel.self) private var model
     @State private var metricName = "step_count"
-    @State private var days = 30
+    @State private var days = 7
     @State private var points: [ChartPoint]?
+    @State private var unlocking = false
 
     private var metric: Metric? { MetricCatalog.metric(named: metricName) }
 
@@ -31,6 +32,20 @@ struct ChartsView: View {
                     }
                     .pickerStyle(.segmented)
                     .accessibilityIdentifier("chart-range")
+                    .onChange(of: days) { old, new in
+                        guard !model.store.access.history.allows(lastDays: new) else { return }
+                        days = old
+                        unlocking = true
+                    }
+                    if let cap = model.store.access.history.days {
+                        Button {
+                            unlocking = true
+                        } label: {
+                            Label("Reaches back \(cap) days until you unlock Full", systemImage: "lock.fill")
+                                .font(.subheadline)
+                        }
+                        .accessibilityIdentifier("chart-needs-full")
+                    }
                 }
                 Section {
                     if let points {
@@ -48,6 +63,7 @@ struct ChartsView: View {
                 }
             }
             .navigationTitle("Charts")
+            .sheet(isPresented: $unlocking) { UnlockView() }
             .task(id: "\(metricName)|\(days)") {
                 points = nil
                 points = await model.chartPoints(metric: metricName, days: days)

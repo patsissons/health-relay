@@ -14,6 +14,16 @@ much** instead, such as since the last run, or the last 7 days.
 
 Each pipeline has its own trigger, set when you add or edit it.
 
+Running a pipeline, by a tap or by itself, needs the trial or Health Data Relay
+Full. After the trial, pipelines stay saved with their triggers and show a lock
+instead of Run; choosing a plan resumes them as they were.
+
+During the trial and on the free tier, everything reads the last 7 days: the 7
+whole days before today, plus today so far. A longer range still runs and sends
+the days in reach, and the pipeline's card says so. Full reads as far back as
+Health goes, and when you unlock it, pipelines that send changed days catch up
+on the last 35.
+
 **Manual**, the default: only tapping **Run** or **Run now**. With every pipeline
 manual, Health Data Relay doesn't ask iOS to wake it at all.
 

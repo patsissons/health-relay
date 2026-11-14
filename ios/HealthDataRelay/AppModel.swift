@@ -20,7 +20,13 @@ final class AppModel {
 
     let engine: Engine
     let health: LiveHealthStore
-    /// What the user bought; free keeps everything manual.
+    /// Health as pipelines, Export and Charts read it: no further back than
+    /// the plan allows (see `HistoryLimit`).
+    let queries: any HealthQuerying
+    /// The same, reaching the older window a report compares against.
+    let reportQueries: any HealthQuerying
+    private let history: HistoryLimitBox
+    /// What the user bought; free keeps Export and Charts.
     let store = Store()
     /// Set to show the unlock sheet from anywhere.
     var showUnlock = false
@@ -55,6 +61,11 @@ final class AppModel {
     init() {
         if ProcessInfo.processInfo.arguments.contains("-reset") { AppModel.resetState() }
         health = LiveHealthStore()
+        let history = HistoryLimitBox(store.access.history)
+        self.history = history
+        let queries = CappedHealthQuerying(health, box: history)
+        self.queries = queries
+        reportQueries = CappedHealthQuerying(health, box: history, scope: .comparison)
         let model = AppModel.deviceModel
         let os = UIDevice.current.systemVersion
         let app = "Health Data Relay \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0")"
@@ -72,15 +83,17 @@ final class AppModel {
             files: files,
             tokens: KeychainTokenStore(),
             device: { Device(name: $0, model: model, os: os, app: app) },
-            queries: health,
+            queries: queries,
             notify: { AppModel.post($0) },
             uploader: uploader,
             calendars: LiveCalendarStore(),
-            oauth: { AppModel.oauth($0) }))
+            oauth: { AppModel.oauth($0) }),
+            // From the start, so nothing runs or reads further back than the plan allows.
+            policy: store.access.enginePolicy)
         let health = health
         let serverDevice = Device(name: "iPhone", model: model, os: os, app: app)
         server = ServerController(root: files.root, tokens: KeychainTokenStore()) {
-            MCPHandler(store: health, calendar: .local(), device: serverDevice)
+            MCPHandler(store: queries, calendar: .local(), device: serverDevice, history: { history.limit })
         }
         let engine = engine
         Task { [weak self] in
@@ -89,10 +102,9 @@ final class AppModel {
             }
         }
         // Nothing to observe also clears background delivery an earlier launch
-        // turned on. The free tier observes nothing: its pipelines run when tapped.
+        // turned on. The free tier observes nothing: its pipelines don't run.
         let automatic = store.access.allowsAutomation
         if plan.observesHealth && automatic { observeHealth() } else if LiveHealthStore.isAvailable { health.stopObserving() }
-        Task { await engine.setAutomation(automatic) }
         store.onChange = { [weak self] _ in Task { await self?.accessChanged() } }
         store.start()
         Task { await refreshAuthorization() }
@@ -173,7 +185,7 @@ final class AppModel {
         let calendar = Calendar.local()
         let today = Day(.now, calendar: calendar)
         let day = (yesterday ? today.adding(-1) : today).interval(in: calendar)
-        let extractor = Extractor(store: health, spec: ExtractSpec(grouping: .days), calendar: calendar, ranges: [day])
+        let extractor = Extractor(store: queries, spec: ExtractSpec(grouping: .days), calendar: calendar, ranges: [day])
         var out: [DayValue] = []
         for metric in MetricCatalog.metrics {
             var pager = extractor.points(of: metric)
@@ -200,8 +212,18 @@ final class AppModel {
         await refreshAuthorization()
     }
 
-    /// Writes a one-off export to a file for the user to share.
-    func export(source: String, spec: ExtractSpec, range: DateInterval) async throws -> ExportedFile {
+    /// A range older than the plan's history reaches.
+    struct BeyondHistory: Error, CustomStringConvertible {
+        let days: Int
+        var description: String { "Those dates are older than the last \(days) days. Unlock Health Data Relay Full to export older data." }
+    }
+
+    /// Writes a one-off export to a file for the user to share. The range is
+    /// cut to what the plan's history reaches, so the file says what's in it.
+    func export(source: String, spec: ExtractSpec, range asked: DateInterval) async throws -> ExportedFile {
+        let calendar = Calendar.local()
+        let limit = store.access.history
+        guard let range = limit.clamp(asked, now: .now, calendar: calendar) else { throw BeyondHistory(days: limit.days ?? 0) }
         exporting = true
         defer { exporting = false }
         var extras: ReadExtras = []
@@ -210,18 +232,20 @@ final class AppModel {
         if spec.sections.contains(.stateOfMind) { extras.insert(.stateOfMind) }
         if spec.sections.contains(.medications) { extras.insert(.medications) }
         try? await health.requestAuthorization(types: spec.healthTypes, extras: extras)
-        let calendar = Calendar.local()
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("export", isDirectory: true)
         let export = ExportInfo(device: Device(name: snapshot.deviceName, model: AppModel.deviceModel, os: UIDevice.current.systemVersion, app: "Health Data Relay"), generatedAt: .now, timeZone: calendar.timeZone)
-        return try await OneOffExport(store: health, calendar: calendar, folder: folder).run(source: source, spec: spec, range: range, export: export)
+        return try await OneOffExport(store: queries, calendar: calendar, folder: folder).run(source: source, spec: spec, range: range, export: export)
     }
+
+    /// How far back the workout list goes.
+    var workoutListDays: Int { store.access.history.days ?? 90 }
 
     func recentWorkouts() async -> [WorkoutDetail] {
         try? await health.requestAuthorization(types: [.workout], extras: [.routes])
         let calendar = Calendar.local()
         let spec = ExtractSpec(sections: [.workouts])
-        let range = DateInterval(start: calendar.date(byAdding: .day, value: -90, to: .now)!, end: .now)
-        var pager = Extractor(store: health, spec: spec, calendar: calendar, ranges: [range]).workouts()
+        let range = DateInterval(start: calendar.date(byAdding: .day, value: -workoutListDays, to: .now)!, end: .now)
+        var pager = Extractor(store: queries, spec: spec, calendar: calendar, ranges: [range]).workouts()
         var out: [WorkoutDetail] = []
         while let page = try? await pager.next() { out += page }
         return out.reversed()
@@ -252,7 +276,7 @@ final class AppModel {
         await engine.reloadIfUnreadable()
         store.recheckClock()
         await store.refresh()
-        await engine.setAutomation(store.access.allowsAutomation)
+        await applyAccess()
         await refreshAuthorization()
         watchSchedules()
         if store.access.allowsServer { await server.start() } else { server.stop() }
@@ -285,7 +309,7 @@ final class AppModel {
     /// Background refresh, run by the system.
     func refresh() async {
         store.recheckClock()
-        await engine.setAutomation(store.access.allowsAutomation)
+        await applyAccess()
         await engine.sync(.refresh)
         await applyBackgroundPlan()
     }
@@ -293,7 +317,7 @@ final class AppModel {
     /// iOS's longer background time, for output a refresh can't finish.
     func process() async {
         store.recheckClock()
-        await engine.setAutomation(store.access.allowsAutomation)
+        await applyAccess()
         await engine.sync(.processing)
         await applyBackgroundPlan()
     }
@@ -311,9 +335,11 @@ final class AppModel {
 
     func pipelines() async -> [Pipeline] { await engine.snapshot.pipelines }
 
+    static let shortcutsNeedFull = "Shortcuts need Health Data Relay Full. Open the app to unlock it."
+
     /// Runs a pipeline for a Shortcut and says how it went.
     func runForShortcut(_ id: UUID) async -> String {
-        guard store.access.allowsAutomation else { return "Running from Shortcuts needs Health Data Relay Full. Open the app to unlock it." }
+        guard store.access.allowsPipelineRuns else { return Self.shortcutsNeedFull }
         let report = await engine.run(id)
         await applyBackgroundPlan()
         let lane = await engine.snapshot.pipelines.first { $0.id == id }?.lane
@@ -327,7 +353,7 @@ final class AppModel {
         guard let metric = MetricCatalog.metric(named: name) else { return nil }
         let calendar = Calendar.local()
         let today = Day(.now, calendar: calendar).interval(in: calendar)
-        let extractor = Extractor(store: health, spec: ExtractSpec(grouping: .days), calendar: calendar, ranges: [today])
+        let extractor = Extractor(store: queries, spec: ExtractSpec(grouping: .days), calendar: calendar, ranges: [today])
         var pager = extractor.points(of: metric)
         guard let point = try? await pager.next()?.first else { return nil }
         return Self.text(point, unit: pager.unitLabel)
@@ -355,7 +381,7 @@ final class AppModel {
         let rows = await engine.snapshot.pipelines.map { p -> WidgetSnapshot.PipelineRow in
             var next: Date?
             if case .next(let date) = p.timing(now: .now) { next = date }
-            let manual = p.trigger == .manual && p.extract.range != .askAtRun && store.access.allowsAutomation
+            let manual = p.trigger == .manual && p.extract.range != .askAtRun && store.access.allowsPipelineRuns
             return .init(id: p.id, name: p.name, state: p.lane.attention != nil ? "Needs attention" : (p.lane.lastSuccess == nil ? "Hasn't run yet" : "Last run finished"),
                          needsAttention: p.lane.attention != nil, nextRun: next, lastSuccess: p.lane.lastSuccess,
                          runLink: manual ? RunLink(pipeline: p.id, key: key).url : nil)
@@ -374,7 +400,7 @@ final class AppModel {
         let today = Day(.now, calendar: calendar)
         let range = DateInterval(start: today.adding(1 - days).start(in: calendar), end: .now)
         let grouping: TimeGrouping = days > 120 ? .weeks : .days
-        var pager = Extractor(store: health, spec: ExtractSpec(grouping: grouping), calendar: calendar, ranges: [range]).points(of: metric)
+        var pager = Extractor(store: queries, spec: ExtractSpec(grouping: grouping), calendar: calendar, ranges: [range]).points(of: metric)
         let units = pager.unitLabel
         var out: [ChartPoint] = []
         while let page = try? await pager.next() {
@@ -463,10 +489,16 @@ final class AppModel {
 
     // MARK: Access
 
-    /// A purchase, a restore or the trial's end: what runs by itself follows.
+    /// What was paid for decides what runs and how far back Health is read.
+    private func applyAccess() async {
+        history.limit = store.access.history
+        await engine.setPolicy(store.access.enginePolicy)
+    }
+
+    /// A purchase, a restore or the trial's end: what runs follows.
     func accessChanged() async {
         let access = store.access
-        await engine.setAutomation(access.allowsAutomation)
+        await applyAccess()
         if access.allowsServer {
             if UIApplication.shared.applicationState == .active { await server.start() }
         } else {
@@ -487,7 +519,7 @@ final class AppModel {
         guard wait > 60 else { return }
         let content = UNMutableNotificationContent()
         content.title = "Your trial ends tomorrow"
-        content.body = "After that, pipelines run when you tap Run. Unlock Health Data Relay Full to keep them running by themselves."
+        content.body = "After that, pipelines stop running, and Export and Charts keep the last 7 days. Unlock Health Data Relay Full to keep everything."
         try? await center.add(UNNotificationRequest(identifier: "trial-ending", content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: wait, repeats: false)))
     }
 
@@ -631,7 +663,7 @@ final class AppModel {
             return
         }
         if let link = RunLink(url) {
-            guard store.access.allowsAutomation else { showUnlock = true; return }
+            guard store.access.allowsPipelineRuns else { showUnlock = true; return }
             if link.key == runKey { await run(link.pipeline) }
             return
         }

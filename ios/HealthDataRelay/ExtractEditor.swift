@@ -3,7 +3,12 @@ import SwiftUI
 
 /// What a template pipeline reads, how much of it and how it's grouped.
 struct ExtractEditor: View {
+    @Environment(AppModel.self) private var model
     @Binding var spec: ExtractSpec
+    @State private var unlocking = false
+
+    /// Days a range may reach back; nil with Full.
+    private var cap: Int? { model.store.access.history.days }
 
     /// The range choices the picker offers, standing in for `RangeSpec`.
     private enum RangeChoice: Hashable {
@@ -74,7 +79,17 @@ struct ExtractEditor: View {
             }
             .accessibilityIdentifier("range")
             if case .previousDays(let n) = spec.range {
-                Stepper("Previous \(n) \(n == 1 ? "day" : "days")", value: Binding { n } set: { spec.range = .previousDays($0) }, in: 1...365)
+                Stepper("Previous \(n) \(n == 1 ? "day" : "days")", value: Binding { n } set: { spec.range = .previousDays($0) }, in: 1...(cap ?? 365))
+            }
+            if let cap {
+                Button {
+                    unlocking = true
+                } label: {
+                    Label("Reaches back \(cap) days until you unlock Full", systemImage: "lock.fill")
+                        .font(.subheadline)
+                }
+                .accessibilityIdentifier("range-needs-full")
+                .sheet(isPresented: $unlocking) { UnlockView() }
             }
             Picker("Grouping", selection: grouping) {
                 Text("Every sample").tag(TimeGrouping?.none)

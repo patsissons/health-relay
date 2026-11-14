@@ -44,7 +44,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Health Data Relay Full")
                 } footer: {
-                    Text("Free runs pipelines when you tap Run. Full also runs them by themselves, from Shortcuts and widgets, serves AI tools and the Mac, and lets you write templates.")
+                    Text("Free keeps Export and Charts for the last 7 days. Full runs pipelines, by a tap or by themselves, from Shortcuts and widgets, reaches all your history, serves AI tools and the Mac, and lets you write templates.")
                 }
 
                 Section {

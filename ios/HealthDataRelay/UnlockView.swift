@@ -17,14 +17,15 @@ struct UnlockView: View {
         NavigationStack {
             List {
                 Section {
-                    feature("Pipelines run by themselves", "When Health changes, on a schedule or at a time, in the background.", "clock.arrow.circlepath")
+                    feature("Pipelines", "Run them with a tap, when Health changes, on a schedule or at a time, in the background.", "clock.arrow.circlepath")
+                    feature("All your history", "Export, send and chart as far back as Health goes, not only the last 7 days.", "calendar")
                     feature("Shortcuts and widgets", "Run pipelines from automations and the Home Screen.", "square.grid.2x2")
                     feature("AI tools and the Mac", "The MCP server for tools on your network, and the Mac dashboard.", "dot.radiowaves.left.and.right")
                     feature("Your own templates", "Write, import and edit templates in any format.", "doc.text")
                 } header: {
                     Text("Health Data Relay Full")
                 } footer: {
-                    Text("Free keeps running pipelines when you tap Run, Export, and Charts.")
+                    Text("Free keeps Export and Charts for the last 7 days.")
                 }
 
                 Section {
@@ -32,7 +33,7 @@ struct UnlockView: View {
                         .accessibilityIdentifier("unlock-status")
                 } footer: {
                     if case .trial(let end) = store.access {
-                        Text("Everything is unlocked free until \(end.formatted(date: .abbreviated, time: .shortened)), with nothing to cancel. After that, pipelines run when you tap Run until you choose a plan.")
+                        Text("Free until \(end.formatted(date: .abbreviated, time: .shortened)), with nothing to cancel. The trial reaches back 7 days. After it, pipelines stop running until you choose a plan; Export and Charts stay.")
                     }
                 }
 
@@ -127,7 +128,7 @@ struct UnlockView: View {
 }
 
 /// On the Pipelines screen. A first launch says what the trial is, how long
-/// it lasts, what stops and what it costs after (guideline 3.1.1); once
+/// it lasts, what it leaves out, what stops and what it costs after (guideline 3.1.1); once
 /// read, a small line counts down. When it ends, a card offers the plans.
 struct AccessNotice: View {
     @Environment(AppModel.self) private var model
@@ -142,7 +143,7 @@ struct AccessNotice: View {
             switch store.access {
             case .trial where !trialRead:
                 card("Everything is free for \(Store.days(store.access.trialDaysLeft(now: .now) ?? 0))",
-                     "Pipelines run by themselves, from Shortcuts and widgets, serve AI tools, and use your own templates. Nothing to buy or cancel. After the trial, pipelines run when you tap Run unless you choose a plan\(fromPrice).",
+                     "Pipelines run by themselves, from Shortcuts and widgets, serve AI tools, and use your own templates, with the last 7 days of your data. Nothing to buy or cancel. After the trial, pipelines stop running and Export and Charts stay, unless you choose a plan\(fromPrice). A plan also reaches all your history.",
                      symbol: "sparkles", primary: "See plans", secondary: "Got it") { trialRead = true }
             case .trial:
                 Button {
@@ -155,7 +156,7 @@ struct AccessNotice: View {
                 .accessibilityIdentifier("trial-status")
             case .free where !endedDismissed:
                 card("Your trial has ended",
-                     "Pipelines still run when you tap Run. Choose a plan to run them by themselves again\(fromPrice).",
+                     "Export and Charts still work for the last 7 days. Choose a plan to run pipelines again and reach all your history\(fromPrice).",
                      symbol: "hourglass.bottomhalf.filled", primary: "See plans", secondary: "Not now") { endedDismissed = true }
             default:
                 EmptyView()

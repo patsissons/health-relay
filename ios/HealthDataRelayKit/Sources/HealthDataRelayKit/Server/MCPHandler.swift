@@ -29,12 +29,16 @@ public struct MCPHandler: Sendable {
     public let calendar: Calendar
     public let device: Device
     public let now: @Sendable () -> Date
+    /// How far back an answer may reach (see `HistoryLimit`).
+    public let history: @Sendable () -> HistoryLimit
 
-    public init(store: HealthQuerying, calendar: Calendar, device: Device, now: @escaping @Sendable () -> Date = { Date() }) {
+    public init(store: HealthQuerying, calendar: Calendar, device: Device, now: @escaping @Sendable () -> Date = { Date() },
+                history: @escaping @Sendable () -> HistoryLimit = { .unlimited }) {
         self.store = store
         self.calendar = calendar
         self.device = device
         self.now = now
+        self.history = history
     }
 
     /// One JSON-RPC message in; the reply, or nil for a notification.
@@ -105,7 +109,13 @@ public struct MCPHandler: Sendable {
             return problem("Dates are written yyyy-MM-dd.")
         }
         guard start <= end else { return problem("The start date is after the end date.") }
-        var spec = ExtractSpec(sections: [tool.section], range: .fixed(DateInterval(start: start.start(in: calendar), end: end.adding(1).start(in: calendar))), grouping: .days)
+        let asked = DateInterval(start: start.start(in: calendar), end: end.adding(1).start(in: calendar))
+        let limit = history()
+        guard let range = limit.clamp(asked, now: now(), calendar: calendar) else {
+            let first = limit.firstDay(now: now(), calendar: calendar).map(\.description) ?? ""
+            return problem("This plan reads the last \(limit.days ?? 0) days. Ask for dates from \(first) on, or unlock Health Data Relay Full in the app for older data.")
+        }
+        var spec = ExtractSpec(sections: [tool.section], range: .fixed(range), grouping: .days)
         spec.workouts.series = false
         spec.workouts.routes = false
         if case .bool(true)? = args["routes"] { spec.workouts.routes = true }
@@ -117,13 +127,17 @@ public struct MCPHandler: Sendable {
             spec.grouping = grouping
         }
         do {
-            let range = DateInterval(start: start.start(in: calendar), end: end.adding(1).start(in: calendar))
             let extractor = Extractor(store: store, spec: spec, calendar: calendar, ranges: [range])
             let sink = MemorySink()
             let export = ExportInfo(device: device, generatedAt: now(), timeZone: calendar.timeZone)
             let limits = TemplateLimits(outputBytes: Self.maxOutput, deadline: Date().addingTimeInterval(60))
             _ = try await TemplateTransformer(template: BuiltInTemplates.template(BuiltInTemplates.metricsJSONv2), limits: limits).run(extractor: extractor, export: export) { _, _ in sink }
-            return ["content": [["type": "text", "text": .string(sink.string)]]]
+            var content: [JSON] = [["type": "text", "text": .string(sink.string)]]
+            if range != asked {
+                // After the data, so a client that reads only the first item still gets it.
+                content.append(["type": "text", "text": .string("Only dates from \(Day(range.start, calendar: calendar)) on are included: this plan reads the last \(limit.days ?? 0) days. Health Data Relay Full reads older data.")])
+            }
+            return ["content": .array(content)]
         } catch let error as TemplateError where error.message.contains("size limit") {
             return problem("That's too much for one answer. Ask for fewer days, fewer metrics or a coarser grouping.")
         } catch {

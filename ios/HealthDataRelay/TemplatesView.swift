@@ -200,7 +200,7 @@ struct TemplateEditor: View {
         .task(id: "\(source)|\(realData)") {
             try? await Task.sleep(for: .milliseconds(400))
             guard !Task.isCancelled else { return }
-            let result = await TemplatePreview.render(source: source, store: realData ? model.health : nil)
+            let result = await TemplatePreview.render(source: source, store: realData ? model.queries : nil)
             if !Task.isCancelled { preview = result }
         }
         .alert("Couldn't save", isPresented: Binding { saveError != nil } set: { if !$0 { saveError = nil } }) {

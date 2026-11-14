@@ -1,8 +1,9 @@
 import Foundation
 
-/// What the user has paid for. Free keeps everything manual: runs by hand,
-/// Export, Charts. Trial and Full add what runs by itself: automatic
-/// triggers, Shortcuts and widget runs, the server, and your own templates.
+/// What the user has paid for. Free keeps Export and Charts. Trial and Full
+/// add pipelines, by a tap or by themselves, Shortcuts and widget runs, the
+/// server, and your own templates. Only Full reads further back than the
+/// last seven days (see `HistoryLimit`).
 public enum Access: Sendable, Equatable, Codable {
     case free
     case trial(endsAt: Date)

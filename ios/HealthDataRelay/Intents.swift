@@ -56,7 +56,8 @@ struct TodayValueIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<String> {
-        .result(value: await AppModel.shared.todayText(metric: metric.rawValue) ?? "No data yet")
+        guard AppModel.shared.store.access.allowsAutomation else { return .result(value: AppModel.shortcutsNeedFull) }
+        return .result(value: await AppModel.shared.todayText(metric: metric.rawValue) ?? "No data yet")
     }
 }
 

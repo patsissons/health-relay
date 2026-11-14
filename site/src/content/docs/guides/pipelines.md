@@ -62,7 +62,7 @@ Tap a card for **Run now**, its parts and **Edit**, and:
 - **Deliveries**, newest first: the days in each batch, when, the HTTP status,
   and what the receiver said. The days still waiting are listed at the top.
 - **Test**, which sends an empty push and shows the answer.
-- **Re-send recent days**, on a pipeline that sends changed days, which sends the last 7, 14 or 35 days again, replacing
+- **Re-send recent days**, on a pipeline that sends changed days, which sends the last 7, 14 or 35 days again (7 until you unlock Full), replacing
   what the destination holds for those days with what the phone has now. See
   [Re-send on demand](/guides/when-it-syncs/#re-send-on-demand).
 - **Paused**, for a pipeline that runs by itself, and **Remove pipeline**.
