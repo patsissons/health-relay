@@ -70,12 +70,16 @@ public struct BucketQuery: Sendable, Equatable {
     public var unit: String
     public var style: Style
     public var plan: BucketPlan
+    /// Samples before this are left out, so the first bucket can hold only
+    /// part of its span (see `CappedHealthQuerying`). Nil reads every bucket whole.
+    public var from: Date?
 
-    public init(type: String, unit: String, style: Style, plan: BucketPlan) {
+    public init(type: String, unit: String, style: Style, plan: BucketPlan, from: Date? = nil) {
         self.type = type
         self.unit = unit
         self.style = style
         self.plan = plan
+        self.from = from
     }
 }
 

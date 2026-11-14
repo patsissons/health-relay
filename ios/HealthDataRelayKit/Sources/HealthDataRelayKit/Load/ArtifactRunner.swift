@@ -16,6 +16,12 @@ struct ArtifactRunner: Sendable {
     let pause: @Sendable (Duration) async -> Void
     let export: @Sendable () -> ExportInfo
     let limits: TemplateLimits
+    /// The oldest day a run may list, and the instant no range starts before
+    /// (see `Engine.earliestDay`). A changed day that arrives empty removes
+    /// that day's data at the destination, so a day that can't be read is
+    /// dropped whole, never sent empty.
+    var earliest: Day?
+    var floor: Date?
 
     /// The saved cursor: read and replace.
     struct CursorAccess: Sendable {
@@ -59,6 +65,9 @@ struct ArtifactRunner: Sendable {
             } catch RangePlanner.Failure.needsAnswer {
                 await access.update { $0.lastError = "This pipeline asks for its range when you tap Run." }
                 return .failed
+            } catch RangePlanner.Failure.beyondHistory {
+                await access.update { $0.lastError = Engine.beyondHistoryMessage }
+                return .failed
             } catch {
                 return .unreadable(error.localizedDescription)
             }
@@ -82,11 +91,11 @@ struct ArtifactRunner: Sendable {
             let own = spec.healthTypes.filter { !shared.contains($0) }
             let found = try await Extractor.late(in: store, types: own, cursor: ExtractCursor(lastEnd: .distantFuture, anchors: saved.anchors), since: at.addingTimeInterval(-40 * 86400))
             nextAnchors = found.anchors
-            let extra = found.late.flatMap { DirtyRules.days(of: $0, calendar: calendar) }
+            let extra = found.late.flatMap { DirtyRules.days(of: $0, calendar: calendar) }.filter(allowed)
             if !extra.isEmpty {
                 await access.update { $0.dirty.mark(extra, at: at) }
             }
-            let dirty = Set(lane.dirty.days).union(extra)
+            let dirty = Set(lane.dirty.days.filter(allowed)).union(extra)
             days = dirty.filter { !lane.covered($0) || extra.contains($0) }.sorted()
             guard !days.isEmpty else {
                 if !nextAnchors.isEmpty { await cursor.write(RangePlanner(calendar: calendar).advanced(saved, spec: spec.range, now: at, anchors: nextAnchors)) }
@@ -100,7 +109,7 @@ struct ArtifactRunner: Sendable {
             break
         }
 
-        let ranges = try RangePlanner(calendar: calendar).ranges(spec.range, now: at, cursor: saved, changedDays: days, late: late, answer: answer)
+        let ranges = try RangePlanner(calendar: calendar).ranges(spec.range, now: at, cursor: saved, changedDays: days, late: late, answer: answer, floor: floor)
         let extractor = Extractor(store: store, spec: spec, calendar: calendar, ranges: ranges)
         var push: JSON?
         if template.usesPush, let pushData {
@@ -145,6 +154,10 @@ struct ArtifactRunner: Sendable {
         // Saved only once the artifact is safe on disk: a crash before here reads the range again.
         await cursor.write(RangePlanner(calendar: calendar).advanced(saved, spec: spec.range, now: at, anchors: nextAnchors))
         return true
+    }
+
+    private func allowed(_ day: Day) -> Bool {
+        earliest.map { day >= $0 } ?? true
     }
 
     /// Delivers what's left of an artifact. Nil when all of it went through.

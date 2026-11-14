@@ -163,6 +163,8 @@ public struct RangePlanner: Sendable {
     public enum Failure: Error, Equatable {
         /// `askAtRun` with nothing answered.
         case needsAnswer
+        /// All of it is older than the plan's history reaches (see `HistoryLimit`).
+        case beyondHistory
     }
 
     /// A first since-last-run has no last run: it covers this many days back.
@@ -176,8 +178,17 @@ public struct RangePlanner: Sendable {
 
     /// The run's ranges, in order and not overlapping. `changedDays` are the
     /// pipeline's dirty days, `late` the older samples found since last time,
-    /// and `answer` what was picked for an asked range.
-    public func ranges(_ spec: RangeSpec, now: Date, cursor: ExtractCursor = ExtractCursor(), changedDays: [Day] = [], late: [DateInterval] = [], answer: DateInterval? = nil) throws -> [DateInterval] {
+    /// and `answer` what was picked for an asked range. Nothing starts before
+    /// `floor`; a range wholly before it fails rather than send nothing.
+    public func ranges(_ spec: RangeSpec, now: Date, cursor: ExtractCursor = ExtractCursor(), changedDays: [Day] = [], late: [DateInterval] = [], answer: DateInterval? = nil, floor: Date? = nil) throws -> [DateInterval] {
+        let whole = try unbounded(spec, now: now, cursor: cursor, changedDays: changedDays, late: late, answer: answer)
+        guard let floor else { return whole }
+        let kept = whole.compactMap { HistoryLimit.clip($0, to: floor) }
+        if kept.isEmpty && !whole.isEmpty { throw Failure.beyondHistory }
+        return kept
+    }
+
+    private func unbounded(_ spec: RangeSpec, now: Date, cursor: ExtractCursor, changedDays: [Day], late: [DateInterval], answer: DateInterval?) throws -> [DateInterval] {
         let today = Day(now, calendar: calendar)
         switch spec {
         case .changedDays:

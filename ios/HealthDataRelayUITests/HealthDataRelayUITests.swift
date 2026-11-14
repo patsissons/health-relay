@@ -145,9 +145,9 @@ final class HealthDataRelayUITests: XCTestCase {
         waitForExpectations(timeout: 5)
     }
 
-    /// Free runs pipelines by hand: a scheduled one keeps its trigger but
-    /// shows Run and a lock, and the server asks for Full.
-    func testFreeRunsPipelinesByHand() throws {
+    /// Free doesn't run pipelines: one keeps its trigger but shows a lock
+    /// instead of Run, the server asks for Full, and Export still works.
+    func testFreeCannotRunPipelines() throws {
         app.terminate()
         app.launchArguments = ["-reset", "-hideSeed", "-access", "free"]
         app.launch()
@@ -158,28 +158,88 @@ final class HealthDataRelayUITests: XCTestCase {
         type("pipeline-name", "Hourly")
         type("pipeline-url", "http://127.0.0.1:8787/")
         app.swipeUp()
+        XCTAssertTrue(app.buttons["trigger-needs-full"].waitForExistence(timeout: 5), "even a manual pipeline needs Full to run")
         app.buttons["Every"].tap()
         // Choosing a trigger that runs by itself offers Full.
         let done = app.buttons["unlock-done"]
         XCTAssertTrue(done.waitForExistence(timeout: 5))
         snap("unlock-sheet")
         done.tap()
-        XCTAssertTrue(app.buttons["trigger-needs-full"].waitForExistence(timeout: 5))
         app.buttons["save-pipeline"].tap()
         if app.buttons["Not Now"].waitForExistence(timeout: 2) { app.buttons["Not Now"].tap() }
 
-        XCTAssertTrue(app.buttons["run-Hourly"].waitForExistence(timeout: 10), "free can still run it by hand")
-        XCTAssertFalse(app.staticTexts["next-run"].exists, "and nothing counts down")
         let lock = app.buttons["needs-full-Hourly"]
-        XCTAssertTrue(lock.exists)
+        XCTAssertTrue(lock.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["run-Hourly"].exists, "free can't run it by hand")
+        XCTAssertFalse(app.staticTexts["next-run"].exists, "and nothing counts down")
+        snap("free-pipeline-locked")
         lock.tap()
         XCTAssertTrue(done.waitForExistence(timeout: 5))
         done.tap()
+
+        // Its own screen has no Run either.
+        app.staticTexts["Hourly"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["edit-pipeline"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["run-now"].exists)
+        app.navigationBars.buttons.firstMatch.tap()
+
+        // Export still makes a file, from the last 7 days.
+        app.buttons["export"].tap()
+        XCTAssertTrue(app.buttons["export-range-needs-full"].waitForExistence(timeout: 5))
+        let run = app.buttons["export-run"]
+        reveal(run)
+        run.tap()
+        allowHealth()
+        let result = app.staticTexts["export-result"]
+        let failure = app.staticTexts["export-failure"]
+        for _ in 0..<20 where !result.exists && !failure.exists {
+            app.swipeUp()
+            sleep(2)
+        }
+        XCTAssertFalse(failure.exists, failure.exists ? failure.label : "")
+        XCTAssertTrue(app.buttons["export-share"].exists)
+        app.buttons["Done"].tap()
 
         tab("Settings")
         XCTAssertTrue(app.staticTexts["Free"].waitForExistence(timeout: 5) || text("Free").exists)
         app.buttons["server"].tap()
         XCTAssertTrue(app.buttons["server-needs-full"].waitForExistence(timeout: 5))
+    }
+
+    /// The trial reaches back 7 days: longer ranges in Export and Charts show
+    /// a lock and offer the plans, and a pipeline still runs.
+    func testTrialCapsHistory() throws {
+        app.terminate()
+        app.launchArguments = ["-reset", "-hideSeed", "-access", "trial"]
+        app.launch()
+        let export = app.buttons["export"]
+        XCTAssertTrue(export.waitForExistence(timeout: 30))
+        export.tap()
+        let range = app.buttons["export-range"]
+        XCTAssertTrue(range.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["export-range-needs-full"].exists)
+        range.tap()
+        snap("export-range-locked")
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Last 30 days")).firstMatch.tap()
+        let done = app.buttons["unlock-done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 5), "a longer range offers the plans")
+        done.tap()
+        XCTAssertTrue(range.label.contains("Last 7 days"), "and the range stays where it was: \(range.label)")
+        // Custom can't start before the limit either.
+        range.tap()
+        app.buttons["Custom"].tap()
+        XCTAssertTrue(app.datePickers["range-from"].waitForExistence(timeout: 5))
+        app.buttons["Done"].tap()
+
+        tab("Charts")
+        let chartRange = app.segmentedControls["chart-range"]
+        XCTAssertTrue(chartRange.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["chart-needs-full"].exists)
+        chartRange.buttons["30 days"].tap()
+        XCTAssertTrue(done.waitForExistence(timeout: 5))
+        done.tap()
+        XCTAssertTrue(chartRange.buttons["7 days"].isSelected)
+        snap("charts-locked")
     }
 
     /// A new install is on the trial from its first launch, with nothing to

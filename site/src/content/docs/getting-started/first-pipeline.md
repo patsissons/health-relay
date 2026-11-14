@@ -39,6 +39,8 @@ Receivers: the link format is in
      `Authorization: Bearer <token>` and kept in the iPhone's Keychain.
    - **Extra headers**: only if your receiver needs them.
    - **Trigger**: **Manual** runs when you tap Run. You can change it later.
+     Running a pipeline needs the trial or Full; after the trial a pipeline
+     stays saved and shows a lock instead of Run.
 3. Tap **Save**.
 
 ## Test it

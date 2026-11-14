@@ -4,8 +4,9 @@ import Observation
 import StoreKit
 
 /// What the user bought, from StoreKit. Everything is unlocked for 7 days
-/// from the first download, then free is everything by hand until one of
-/// the three paid products unlocks what runs by itself. The answer is
+/// from the first download, reaching back 7 days of data; then free keeps
+/// Export and Charts until one of the three paid products unlocks pipelines
+/// and all of history. The answer is
 /// cached so a background launch can decide before StoreKit replies.
 @MainActor @Observable
 final class Store {

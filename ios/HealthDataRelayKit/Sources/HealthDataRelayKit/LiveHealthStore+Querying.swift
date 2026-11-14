@@ -36,7 +36,7 @@ extension LiveHealthStore: HealthQuerying {
         let cumulative = qt.aggregationStyle == .cumulative
         guard cumulative == (query.style == .sum) else { return [] }
         let options: HKStatisticsOptions = cumulative ? [.cumulativeSum, .separateBySource] : [.discreteAverage, .discreteMin, .discreteMax, .separateBySource]
-        let predicate = HKSamplePredicate.quantitySample(type: qt, predicate: HKQuery.predicateForSamples(withStart: plan.span.start, end: plan.span.end))
+        let predicate = HKSamplePredicate.quantitySample(type: qt, predicate: HKQuery.predicateForSamples(withStart: max(plan.span.start, query.from ?? plan.span.start), end: plan.span.end))
         let descriptor = HKStatisticsCollectionQueryDescriptor(predicate: predicate, options: options, anchorDate: plan.anchor, intervalComponents: Self.components(plan.step))
         let collection = try await descriptor.result(for: healthStore)
         var out: [StatBucket] = []

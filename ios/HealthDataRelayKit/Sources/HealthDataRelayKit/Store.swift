@@ -29,6 +29,9 @@ public struct EngineState: Codable, Sendable {
     public var notices: [UUID: PipelineNotices]?
     /// Cloud accounts pipelines can save to.
     public var accounts: [ConnectedAccount]?
+    /// Whether history was limited when last seen (see `HistoryLimit`), so a
+    /// purchase found at launch still sends the days that were held back.
+    public var historyCapped: Bool?
 
     public init() {}
 }

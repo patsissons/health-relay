@@ -61,7 +61,7 @@ final class FakeHealthQuerying: HealthQuerying, @unchecked Sendable {
     func buckets(_ query: BucketQuery) async throws -> [StatBucket] {
         let samples = locked {
             bucketQueries.append(query)
-            return quantities[query.type] ?? []
+            return (quantities[query.type] ?? []).filter { s in query.from.map { s.start >= $0 } ?? true }
         }
         var edge = query.plan.anchor
         var out: [StatBucket] = []

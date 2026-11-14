@@ -211,8 +211,16 @@ struct PipelineTimingRow: View {
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("pipeline-activity")
         case .idle:
-            // The free tier runs every pipeline when tapped, whatever its trigger.
-            if pipeline.trigger == .manual || !pipeline.automatic {
+            if !pipeline.runnable {
+                // The free tier doesn't run pipelines, whatever their trigger.
+                Button {
+                    model.showUnlock = true
+                } label: {
+                    Label("Runs with Full", systemImage: "lock.fill")
+                        .font(.subheadline)
+                }
+                .accessibilityIdentifier("needs-full-\(pipeline.name)")
+            } else if pipeline.trigger == .manual || !pipeline.automatic {
                 Button {
                     if pipeline.extract.range == .askAtRun {
                         asking = true
@@ -251,6 +259,16 @@ struct PipelineTimingRow: View {
                         .accessibilityIdentifier("next-run")
                 }
             }
+            if pipeline.runnable, model.store.access.history.exceeds(pipeline.extract.range, now: .now, calendar: .local()) {
+                Button {
+                    model.showUnlock = true
+                } label: {
+                    Label("Sends the last \(model.store.access.history.days ?? 0) days until you unlock Full", systemImage: "lock.fill")
+                        .font(.subheadline)
+                        .multilineTextAlignment(.leading)
+                }
+                .accessibilityIdentifier("capped-\(pipeline.name)")
+            }
         }
     }
 
@@ -263,7 +281,7 @@ struct PipelineTimingRow: View {
         // iOS decides when background work runs; the card never claims more.
         case .due(.waitingForIOS): return "Due, waiting for iOS"
         case .due(.unlockIPhone): return "Due, unlock your iPhone"
-        case .needsFullAccess: return "Runs by itself with Full access"
+        case .needsFullAccess: return pipeline.runnable ? "Runs by itself with Full access" : "Runs with Full"
         }
     }
 }
@@ -289,24 +307,26 @@ struct PipelineDetail: View {
                     if pipeline.activity == .running, let progress = model.snapshot.progress {
                         SyncProgressRow(progress: progress)
                     }
-                    Button {
-                        if pipeline.extract.range == .askAtRun {
-                            asking = true
-                        } else {
-                            Task { await model.run(id) }
-                        }
-                    } label: {
-                        HStack {
-                            Label("Run now", systemImage: "play.fill")
-                            if pipeline.activity != .idle {
-                                Spacer()
-                                ProgressView()
+                    if pipeline.runnable {
+                        Button {
+                            if pipeline.extract.range == .askAtRun {
+                                asking = true
+                            } else {
+                                Task { await model.run(id) }
+                            }
+                        } label: {
+                            HStack {
+                                Label("Run now", systemImage: "play.fill")
+                                if pipeline.activity != .idle {
+                                    Spacer()
+                                    ProgressView()
+                                }
                             }
                         }
+                        .disabled(pipeline.activity != .idle || pipeline.destination.paused || pipeline.lane.attention != nil)
+                        .accessibilityIdentifier("run-now")
                     }
-                    .disabled(pipeline.activity != .idle || pipeline.destination.paused || pipeline.lane.attention != nil)
-                    .accessibilityIdentifier("run-now")
-                    if pipeline.trigger != .manual {
+                    if pipeline.trigger != .manual || !pipeline.runnable {
                         PipelineTimingRow(pipeline: pipeline)
                     }
                     if pipeline.activity == .idle, let file = model.latestExport(id) {
@@ -365,11 +385,19 @@ struct PipelineDetail: View {
                          : "Test sends the template's output with no data in it, so you can see the receiver's answer.")
                 }
 
-                if pipeline.definition?.usesDirtyDays ?? true {
+                if pipeline.runnable, pipeline.definition?.usesDirtyDays ?? true {
                     Section {
                         Menu {
                             ForEach([7, 14, 35], id: \.self) { n in
-                                Button("Last \(n) days") { Task { await model.resend(id, lastDays: n) } }
+                                if model.store.access.history.allows(lastDays: n) {
+                                    Button("Last \(n) days") { Task { await model.resend(id, lastDays: n) } }
+                                } else {
+                                    Button {
+                                        model.showUnlock = true
+                                    } label: {
+                                        Label("Last \(n) days", systemImage: "lock.fill")
+                                    }
+                                }
                             }
                         } label: {
                             Label("Re-send recent days", systemImage: "clock.arrow.circlepath")
@@ -954,14 +982,14 @@ struct PipelineEditor: View {
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("trigger-kind")
                 .onChange(of: kind) { _, now in
-                    // Saved either way; it runs by itself once Full is unlocked.
+                    // Saved either way; it runs once Full is unlocked.
                     if now != .manual, model.store.access.isFree { unlocking = true }
                 }
-                if kind != .manual, model.store.access.isFree {
+                if model.store.access.isFree {
                     Button {
                         unlocking = true
                     } label: {
-                        Label("Runs by itself with Full access. Until then, tap Run.", systemImage: "lock.fill")
+                        Label("Pipelines run with Health Data Relay Full. It's saved either way.", systemImage: "lock.fill")
                             .font(.subheadline)
                     }
                     .accessibilityIdentifier("trigger-needs-full")

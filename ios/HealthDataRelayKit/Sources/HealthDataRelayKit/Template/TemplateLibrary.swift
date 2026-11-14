@@ -199,10 +199,11 @@ public struct SampleHealth: HealthQuerying {
     private let days: [Date]
     private let calendar: Calendar
 
-    public init(now: Date = Date(), calendar: Calendar = .local()) {
+    /// Three days is enough to try a template; a report's sample asks for more.
+    public init(now: Date = Date(), calendar: Calendar = .local(), days count: Int = 3) {
         self.calendar = calendar
         let today = calendar.startOfDay(for: now)
-        days = (0..<3).reversed().map { calendar.date(byAdding: .day, value: -$0, to: today)! }
+        days = (0..<max(3, count)).reversed().map { calendar.date(byAdding: .day, value: -$0, to: today)! }
     }
 
     private static let bases: [String: (value: Double, spread: Double)] = [
@@ -211,13 +212,18 @@ public struct SampleHealth: HealthQuerying {
         "HKQuantityTypeIdentifierRestingHeartRate": (58, 3), "HKQuantityTypeIdentifierBodyMass": (78.4, 0.3),
         "HKQuantityTypeIdentifierHeartRateVariabilitySDNN": (46, 8), "HKQuantityTypeIdentifierBloodPressureSystolic": (118, 6),
         "HKQuantityTypeIdentifierBloodPressureDiastolic": (76, 4),
+        "HKQuantityTypeIdentifierAppleExerciseTime": (34, 14), "HKQuantityTypeIdentifierFlightsClimbed": (9, 4),
+        "HKQuantityTypeIdentifierOxygenSaturation": (0.97, 0.01), "HKQuantityTypeIdentifierRespiratoryRate": (14.5, 1.2),
     ]
 
     private func samples(_ type: String, unitFactor: Double = 1) -> [DetailedQuantity] {
         guard let base = Self.bases[type] else { return [] }
         return days.enumerated().map { i, day in
             let at = calendar.date(byAdding: .hour, value: 9, to: day)!
-            let wobble = [0.4, -0.6, 0.2][i % 3] * base.spread
+            // Three days keep the values templates were first tried against;
+            // a longer run drifts and has a weekly rhythm, so it has a shape.
+            let wobble = days.count == 3 ? [0.4, -0.6, 0.2][i % 3] * base.spread
+                : (sin(Double(i) * 0.9 + Double(type.count)) * 0.6 + cos(Double(i) * 2 * .pi / 7) * 0.4 + Double(i - days.count / 2) / Double(days.count) * 0.5) * base.spread
             return DetailedQuantity(id: "\(type)-\(i)", source: "Sample Watch", start: at, end: at.addingTimeInterval(1800), value: (base.value + wobble) * unitFactor,
                                     min: type.hasSuffix("HeartRate") ? base.value - base.spread : nil, max: type.hasSuffix("HeartRate") ? base.value + base.spread : nil)
         }
@@ -229,7 +235,7 @@ public struct SampleHealth: HealthQuerying {
         let plan = query.plan
         var edge = plan.anchor
         var out: [StatBucket] = []
-        let all = samples(query.type)
+        let all = samples(query.type).filter { s in query.from.map { s.start >= $0 } ?? true }
         while edge < plan.span.end {
             let end: Date
             switch plan.step {

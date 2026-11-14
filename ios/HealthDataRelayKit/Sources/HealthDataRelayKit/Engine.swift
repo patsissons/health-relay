@@ -35,8 +35,10 @@ public struct Snapshot: Sendable, Equatable {
     /// old file is kept until the user dismisses this.
     public var stateSetAside = false
     public var backgroundPlan = BackgroundPlan()
-    /// Off: pipelines run only when tapped (see `Access`).
+    /// Off: nothing runs by itself (see `Access`).
     public var automation = true
+    /// Off: a tap doesn't run a pipeline either.
+    public var manualRuns = true
 
     public init() {}
 }
@@ -212,6 +214,8 @@ public actor Engine {
     public static let processingBudget: TimeInterval = 240
     static let outOfTime = "Stopped at the background time limit; the next sync carries on"
     public static let lockedMessage = "Health data is unavailable while the phone is locked"
+    public static let needsFullMessage = "Running pipelines needs Health Data Relay Full"
+    public static let beyondHistoryMessage = "That range is older than the last 7 days. Unlock Full to send older data."
 
     public static let httpDestination: @Sendable (Destination, String?) -> DestinationType = { d, token in
         switch d.kind {
@@ -253,14 +257,37 @@ public actor Engine {
     private var plan = DeliveryPlan()
     /// Ranges picked for asked pipelines about to run.
     private var answers: [UUID: DateInterval] = [:]
-    /// Off on the free tier: nothing runs by itself, but triggers stay saved,
-    /// so paying resumes them as they were. Not saved; the app sets it.
-    private var automation = true
+    /// What was paid for allows: on the free tier nothing runs, but triggers
+    /// stay saved, so paying resumes them as they were. Not saved; the app
+    /// sets it.
+    private var policy: EnginePolicy
+    private var automation: Bool { policy.automation }
 
-    public init(_ env: Environment) {
+    /// `policy` is in force from the first moment, so nothing reads further
+    /// back than it allows before the app has had a chance to say.
+    public init(_ env: Environment, policy: EnginePolicy = .unrestricted) {
         self.env = env
-        state = env.files.load()
+        self.policy = policy
+        var loaded = env.files.load()
+        Engine.applyHistory(policy.history, to: &loaded, now: env.now(), calendar: env.calendar())
+        state = loaded
         stateSetAside = !env.files.setAsideStates().isEmpty
+    }
+
+    /// Drops dirty days older than history reaches: a listed day that can't
+    /// be read would be removed at the destination. When the limit lifts,
+    /// the days a sweep covers are marked so what was held back catches up.
+    private static func applyHistory(_ history: HistoryLimit, to state: inout EngineState, now: Date, calendar: Calendar) {
+        let today = Day(now, calendar: calendar)
+        if let first = history.firstDay(now: now, calendar: calendar) {
+            for id in state.lanes.keys { state.lanes[id]!.dirty.keep { $0 >= first } }
+            state.historyCapped = true
+        } else if state.historyCapped == true {
+            state.historyCapped = false
+            let from = state.readableFrom
+            let days = DirtyRules.last(DirtyRules.sweepDays, today: today).filter { day in from.map { day >= $0 } ?? true }
+            for id in state.lanes.keys where state.definitions?[id]?.usesDirtyDays ?? true { state.lanes[id]!.dirty.mark(days, at: now) }
+        }
     }
 
     // MARK: Status
@@ -280,11 +307,13 @@ public actor Engine {
         s.stateSetAside = stateSetAside
         s.backgroundPlan = automation ? state.backgroundPlan : BackgroundPlan()
         s.automation = automation
-        let automation = automation
+        s.manualRuns = policy.manualRuns
+        let (automation, runnable) = (automation, policy.manualRuns)
         s.pipelines = s.destinations.map {
             var p = Pipeline(destination: $0.destination, lane: $0.lane, hasToken: $0.hasToken,
                              trigger: state.trigger(for: $0.id), activity: activity($0.id), definition: state.definitions?[$0.id])
             p.automatic = automation
+            p.runnable = runnable
             return p
         }
         return s
@@ -371,11 +400,12 @@ public actor Engine {
         changed()
     }
 
-    /// Whether pipelines may run by themselves. Turning it on runs nothing
-    /// at once; the next wake, refresh or foreground does.
-    public func setAutomation(_ allowed: Bool) {
-        guard automation != allowed else { return }
-        automation = allowed
+    /// What pipelines may do and how far back they read. Allowing more runs
+    /// nothing at once; the next wake, refresh, foreground or tap does.
+    public func setPolicy(_ new: EnginePolicy) {
+        guard policy != new else { return }
+        policy = new
+        Engine.applyHistory(new.history, to: &state, now: env.now(), calendar: env.calendar())
         changed()
     }
 
@@ -610,6 +640,7 @@ public actor Engine {
 
     /// Marks the last `n` days dirty for every destination (they go with the next sync).
     public func resend(lastDays n: Int) {
+        guard policy.manualRuns else { return }
         let days = DirtyRules.last(max(1, n), today: today())
         let at = env.now()
         for id in state.lanes.keys { state.lanes[id]!.dirty.mark(readable(days), at: at) }
@@ -618,7 +649,7 @@ public actor Engine {
 
     /// Marks the last `n` days dirty for one pipeline.
     public func resend(_ id: UUID, lastDays n: Int) {
-        guard state.lanes[id] != nil else { return }
+        guard policy.manualRuns, state.lanes[id] != nil else { return }
         state.lanes[id]!.dirty.mark(readable(DirtyRules.last(max(1, n), today: today())), at: env.now())
         changed()
     }
@@ -665,7 +696,10 @@ public actor Engine {
     /// trigger wants it.
     @discardableResult
     public func sync(_ trigger: Trigger) async -> SyncReport {
-        guard trigger != .manual else { return await start(trigger, nil) }
+        guard trigger != .manual else {
+            guard policy.manualRuns else { return SyncReport(trigger: trigger, startedAt: env.now(), message: Engine.needsFullMessage) }
+            return await start(trigger, nil)
+        }
         let ids = dueIDs().union(followingHealthIDs())
         guard !ids.isEmpty else {
             let any = state.destinations.contains { state.trigger(for: $0.id) != .manual }
@@ -679,6 +713,7 @@ public actor Engine {
     /// stopped until it is fixed.
     @discardableResult
     public func run(_ id: UUID, answer: DateInterval? = nil) async -> SyncReport {
+        guard policy.manualRuns else { return SyncReport(trigger: .manual, startedAt: env.now(), message: Engine.needsFullMessage) }
         queued.append(id)
         changed()
         while let running { _ = await running.value }
@@ -785,8 +820,16 @@ public actor Engine {
         changed()
     }
 
+    /// The oldest day that may be listed: the later of what Health lets the
+    /// app read and what the plan's history reaches.
+    private func earliestDay() -> Day? {
+        let capped = policy.history.firstDay(now: env.now(), calendar: env.calendar())
+        guard let from = state.readableFrom else { return capped }
+        return capped.map { max($0, from) } ?? from
+    }
+
     private func readable(_ days: [Day]) -> [Day] {
-        guard let from = state.readableFrom else { return days }
+        guard let from = earliestDay() else { return days }
         return days.filter { $0 >= from }
     }
 
@@ -801,6 +844,8 @@ public actor Engine {
             state.lastSyncMessage = report.message
             return report
         }
+        // A day passes: the oldest dirty day may now be out of reach.
+        Engine.applyHistory(policy.history, to: &state, now: started, calendar: calendar)
 
         // 1. What changed since the anchors, today and yesterday, and the
         // weekly sweep: dirty for every destination, paused ones included.
@@ -972,7 +1017,8 @@ public actor Engine {
         let env = env
         let runner = ArtifactRunner(files: env.files, store: queries, calendar: calendar, now: env.now, pause: env.pause,
                                     export: { ExportInfo(device: env.device(deviceName), generatedAt: env.now(), timeZone: calendar.timeZone) },
-                                    limits: TemplateLimits(deadline: limit, stop: { await self.limitReached }))
+                                    limits: TemplateLimits(deadline: limit, stop: { await self.limitReached }),
+                                    earliest: earliestDay(), floor: policy.history.floor(now: env.now(), calendar: calendar))
         let cursor = ArtifactRunner.CursorAccess(read: { await self.cursor(id) }, write: { await self.setCursor(id, $0) })
         // The native format's data, for a template that writes it: see `Template.usesPush`.
         let store = env.store
