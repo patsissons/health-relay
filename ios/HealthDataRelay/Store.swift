@@ -39,7 +39,7 @@ final class Store {
             Store.defaults.removeObject(forKey: Store.cacheKey)
             Store.defaults.removeObject(forKey: Store.trialStartKey)
             Store.defaults.removeObject(forKey: Store.firstLaunchKey)
-            for key in ["trialNoticeRead", "trialEndedDismissed"] { UserDefaults.standard.removeObject(forKey: key) }
+            for key in ["trialNoticeRead", "trialEndedDismissed", "chartPins"] { UserDefaults.standard.removeObject(forKey: key) }
         }
         Store.recordFirstLaunch()
         override = Store.launchOverride()

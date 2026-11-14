@@ -394,29 +394,15 @@ final class AppModel {
 
     // MARK: Charts
 
-    func chartPoints(metric name: String, days: Int) async -> [ChartPoint] {
-        guard let metric = MetricCatalog.metric(named: name) else { return [] }
+    /// Every metric with data over the last `days`, as each is read, set
+    /// against the same number of days before. The comparison may reach the
+    /// older window the plan allows for comparing; the days shown may not.
+    func chartSeries(days: Int) -> AsyncStream<MetricSeries> {
         let calendar = Calendar.local()
-        let today = Day(.now, calendar: calendar)
-        let range = DateInterval(start: today.adding(1 - days).start(in: calendar), end: .now)
-        let grouping: TimeGrouping = days > 120 ? .weeks : .days
-        var pager = Extractor(store: queries, spec: ExtractSpec(grouping: grouping), calendar: calendar, ranges: [range]).points(of: metric)
-        let units = pager.unitLabel
-        var out: [ChartPoint] = []
-        while let page = try? await pager.next() {
-            for p in page {
-                if let night = p.sleep {
-                    out.append(ChartPoint(date: p.date, value: night.totalSleep, units: units))
-                } else if let avg = p.avg {
-                    out.append(ChartPoint(date: p.date, value: avg, low: p.min, high: p.max, units: units))
-                } else if let qty = p.qty {
-                    out.append(ChartPoint(date: p.date, value: qty, units: units))
-                } else if let systolic = p.systolic {
-                    out.append(ChartPoint(date: p.date, value: systolic, low: p.diastolic, high: systolic, units: units))
-                }
-            }
-        }
-        return out
+        let asked = RangePlanner(calendar: calendar).lastDays(days, now: .now)
+        let period = store.access.history.clamp(asked, now: .now, calendar: calendar) ?? asked
+        return MetricSummarizer(store: reportQueries, calendar: calendar)
+            .all(period: period, previous: MetricSummarizer.previous(of: period, calendar: calendar))
     }
 
     // MARK: Accounts

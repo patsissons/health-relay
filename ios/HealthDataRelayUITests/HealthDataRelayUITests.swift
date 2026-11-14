@@ -235,6 +235,7 @@ final class HealthDataRelayUITests: XCTestCase {
         let chartRange = app.segmentedControls["chart-range"]
         XCTAssertTrue(chartRange.waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["chart-needs-full"].exists)
+        XCTAssertTrue(chartRange.buttons["7 days"].isSelected, "the trial opens on the week it can read")
         chartRange.buttons["30 days"].tap()
         XCTAssertTrue(done.waitForExistence(timeout: 5))
         done.tap()
@@ -848,8 +849,43 @@ final class HealthDataRelayUITests: XCTestCase {
         allowHealth()
         XCTAssertTrue(app.staticTexts["seed-status"].waitForExistence(timeout: 60))
         tab("Charts")
-        XCTAssertTrue(text("Average").waitForExistence(timeout: 30))
+        // Only what Health has data for shows, each on a card.
+        let steps = app.descendants(matching: .any)["chart-card-step_count"]
+        if !steps.waitForExistence(timeout: 15), app.buttons["charts-allow"].exists {
+            app.buttons["charts-allow"].tap()
+            allowHealth()
+        }
+        XCTAssertTrue(steps.waitForExistence(timeout: 30))
+        XCTAssertFalse(app.descendants(matching: .any)["chart-card-blood_glucose"].exists, "nothing seeded, nothing shown")
+        sleep(2)
         snap("charts")
+
+        // Search narrows the cards.
+        let search = app.searchFields.firstMatch
+        if !search.exists { app.swipeDown() }
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("Steps")
+        XCTAssertTrue(steps.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["chart-card-active_energy"].waitForNonExistence(timeout: 5))
+        snap("charts-search")
+
+        // A card opens the metric in full.
+        steps.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["chart"].waitForExistence(timeout: 10))
+        XCTAssertTrue(text("Average").exists)
+        XCTAssertTrue(text("Total").exists)
+        snap("chart-detail")
+        // Full opens on a month, which can be gathered into weeks.
+        let grouping = app.segmentedControls["chart-grouping"]
+        XCTAssertTrue(grouping.waitForExistence(timeout: 10))
+        grouping.buttons["Week"].tap()
+        snap("chart-detail-weeks")
+        // A week is too short to group by anything but days.
+        app.segmentedControls["chart-range"].buttons["7 days"].tap()
+        XCTAssertTrue(grouping.waitForNonExistence(timeout: 10))
+        let pin = app.buttons["chart-pin"]
+        XCTAssertTrue(pin.exists)
     }
 
     /// tools/mac-check.sh's phone: seeds data, turns on the server and leaves it
